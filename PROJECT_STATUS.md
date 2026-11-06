@@ -171,7 +171,7 @@ dataset/raw/{unripe,medium_ripe,ripe}/  →  scan_raw_dataset (Pillow + md5)
 | Q5 | Camera: điện thoại chụp → Termux, hay module riêng? | 5.1–5.2 |
 | Q6 | Target accuracy/latency/throughput? | GĐ 2, 6 |
 | Q7 | Có được dùng ảnh nguồn công khai không? | 1.2 |
-| Q8 | Train CPU-only đủ không, hay cần pass GPU vào container? | GĐ 2 |
+| Q8 | ~~Train CPU-only đủ không, hay cần pass GPU vào container?~~ | ✅ **Đã chốt: CPU training trong container hiện tại** (không cài CUDA, GTX 1650 để ngỏ) |
 
 ---
 
@@ -181,13 +181,22 @@ dataset/raw/{unripe,medium_ripe,ripe}/  →  scan_raw_dataset (Pillow + md5)
 
 **Đã hoàn thành trong TASK (điều chỉnh kiến trúc):** bỏ hướng Android app; đề xuất kiến trúc CLI Termux (`python-tflite-runtime`); kiểm tra GPU (container CPU-only, host GTX 1650 chưa pass); cập nhật `TERMUX_DEPLOYMENT.md`, `PROJECT_ROADMAP.md`, `PROJECT_STATUS.md`, `README.md`, đánh dấu deprecated `android_integration.md`.
 
-**Bước tiếp theo khuyến nghị:**
-1. Chờ người dùng duyệt: (a) kiến trúc Termux CLI, (b) có pass GPU vào container hay giữ CPU train, (c) Q1/Q2 (giống ớt, nhãn).
-2. Chờ Q1/Q2 → thu thập ảnh thật → `--prepare` → train (2.1) → evaluate (2.2) → export (3.1) → CLI Termux (3.3).
+**Đã hoàn thành trong TASK (điều chỉnh kiến trúc):** bỏ hướng Android app; đề xuất kiến trúc CLI Termux (`python-tflite-runtime`); kiểm tra GPU (container CPU-only, host GTX 1650 chưa pass); cập nhật `TERMUX_DEPLOYMENT.md`, `PROJECT_ROADMAP.md`, `PROJECT_STATUS.md`, `README.md`, đánh dấu deprecated `android_integration.md`.
+
+**Quyết định đã được người dùng xác nhận chính thức (2026-11-06):**
+- Kiến trúc: **Termux CLI** (Python + `python-tflite-runtime`, model `.tflite`), KHÔNG Android APK/Kotlin.
+- Training: **CPU trong container hiện tại** — không đổi host/Podman, không cài CUDA; GTX 1650 để ngỏ tương lai.
+- GPU inference: **chưa triển khai**, ưu tiên CPU.
+- Kiến trúc AI: **giữ nguyên** MobileNetV2/V3 Small, 224×224×3, 3 lớp Softmax, transfer learning 2 giai đoạn.
+- Lộ trình: Task 2 Dataset prep → Task 3 Data collection → Task 4 Training → Task 5 TFLite → Task 6 Termux CLI → Task 7 ESP32-S3.
+
+**Bước tiếp theo:**
+1. **Task 2 — Dataset preparation** (đang bắt đầu): hoàn thiện cấu trúc dataset, manifest, nhóm ảnh theo quả, chia train/validation/test, hướng dẫn thu thập ảnh. Không train, không tạo ảnh giả, không tải ảnh hàng loạt, không triển khai CLI.
+2. Chờ Q1/Q2 → Task 3 thu thập ảnh thật → `--prepare` → train → evaluate → export → CLI Termux.
 
 **Rủi ro chính:**
-- Blocking lớn nhất: không có dataset ảnh thật → GĐ 2+ bị chặn.
+- Blocking lớn nhất: không có dataset ảnh thật → Task 4+ bị chặn.
 - Termux: chưa kiểm chứng `python-tflite-runtime` trên điện thoại thật (cần model thật + thiết bị).
-- GPU: nếu muốn train GPU, cần tạo lại container với pass GPU + cài CUDA/cuDNN (cần duyệt).
+- GPU: đã chốt CPU; nếu sau này cần GPU, phải mở task tối ưu GPU riêng (cần duyệt).
 
 *Báo cáo này ghi nhận hiện trạng sau TASK điều chỉnh kiến trúc; không đổi model, không tạo dữ liệu giả, không triển khai app/CLI/firmware.*

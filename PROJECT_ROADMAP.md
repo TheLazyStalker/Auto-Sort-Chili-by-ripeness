@@ -124,24 +124,39 @@
 
 ## 3. Vấn đề chưa rõ — cần người dùng xác nhận (§5)
 
-- **Q1 Giống ớt + điều kiện chụp:** chốt 1–2 giống, ánh sáng, nền, khoảng cách không? (Quyết định ranh giới màu chín.)
-- **Q2 Tiêu chí nhãn `medium_ripe` vs `ripe`:** giữ ngưỡng >90% diện tích đồng đều như `DATASET_GUIDE.md`, hay theo chỉ thị khác (độ cứng, đường kính, chỉ thiên vs sừng)?
+> **Trạng thái 2026-11-06:** Người dùng đã **xác nhận chính thức** các quyết định kỹ thuật (kiến trúc Termux CLI, CPU training, giữ nguyên model). Xem mục "Quyết định đã chốt" bên dưới. Các câu hỏi Q1–Q7 **vẫn đang chờ** để chuẩn bị Task 3 (data collection).
+
+- **Q1 Giống ớt + điều kiện chụp:** chốt 1–2 giống, ánh sáng, nền, khoảng cách không? (Quyết định ranh giới màu chín — chưa đặt ngưỡng màu cố định khi chưa xác định giống.)
+- **Q2 Tiêu chí nhãn `medium_ripe` vs `ripe`:** giữ ngưỡng >90% diện tích đồng đều như `DATASET_GUIDE.md`, hay theo chỉ thị khác?
 - **Q3 Phần cứng là thật hay mô phỏng:** đã có ESP32-S3 / camera / băng tải / servo chưa? Ngân sách? Hay chỉ demo Termux CLI + mô hình cơ khí?
 - **Q4 Giao tiếp:** UART hay BLE giữa Termux CLI và ESP32? Có cần hỗ trợ cloud/logging?
 - **Q5 Camera:** dùng camera điện thoại chụp rồi đưa vào Termux CLI, hay camera module riêng (OV5640, ESP32-CAM)? Độ phân giải / FPS yêu cầu?
 - **Q6 Yêu cầu độ chính xác/latency:** target accuracy tối thiểu, thời gian phân loại tối đa cho 1 quả, throughput băng tải (quả/giây)?
-- **Q7 Quyền ảnh:** có được dùng ảnh từ nguồn công khai (bản quyền/street view) hay chỉ ảnh tự chụp?
-- **Q8 Môi trường train:** CPU-only hiện tại đủ (train chậm nhưng khả thi) hay có dự định thêm GPU (cần pass GPU vào container — xem §5)?
+- **Q7 Quyền ảnh:** Ưu tiên ảnh tự chụp làm dataset chính; ảnh công khai chỉ xem xét bổ sung sau khi đánh giá nguồn gốc/nhãn/điều kiện chụp.
 
-## 4. Thứ tự triển khai đề xuất + bước tiếp theo
+## 3bis. Quyết định đã chốt (xác nhận chính thức 2026-11-06)
 
-1. **Tuần 1 (đã hoàn thành):** GĐ 0 (0.1–0.6) → `pytest` 36 pass + probe split nhỏ → chốt preprocessing → git init + commit + push GitHub.
-2. **Tuần 2:** Chờ Q1/Q2 → thu thập ảnh (1.2) + `groups.csv` (1.3) → `check_dataset.py --prepare` (1.4).
-3. **Tuần 3:** Huấn luyện (2.1) → đánh giá (2.2) → predict end-to-end (2.3) → export TFLite (3.1).
-4. **Tuần 4:** CLI Termux (3.3) → cài `python-tflite-runtime` + copy model → đo trên điện thoại (3.4) → chốt protocol (4.1).
-5. **Tuần 5+:** Chờ Q3/Q5 → firmware + tích hợp (6.1–6.2) → test/tài liệu/demo (GĐ 7).
+| Mục | Quyết định | Ghi chú |
+|---|---|---|
+| Kiến trúc triển khai | **Termux CLI** (Python + `python-tflite-runtime`), model `.tflite`; KHÔNG phát triển Android APK/Kotlin | LiteRT C/C++ & ncnn giữ làm phương án dự phòng |
+| Runtime | `python-tflite-runtime` (gói Termux/Bionic AArch64) | Chưa coi tương thích end-to-end là xác nhận; phải test trên máy ARM64 thật |
+| Training | **CPU training trong container hiện tại** | Không đổi host/Podman, không cài CUDA ở task này; GTX 1650 để ngỏ tương lai |
+| GPU inference | **Chưa triển khai** — ưu tiên CPU | Chỉ xem xét khi có giải pháp Termux thực tế |
+| Kiến trúc AI | **Giữ nguyên**: MobileNetV2/V3 Small, 224×224×3, 3 lớp Softmax, transfer learning 2 giai đoạn, class weights, preprocessing nhất quán | Không tự ý đổi model |
+| Lộ trình | Task 2 Dataset prep → Task 3 Data collection → Task 4 Training → Task 5 TFLite → Task 6 Termux CLI → Task 7 ESP32-S3 | Thứ tự có thể điều chỉnh nếu phát sinh phụ thuộc, phải báo cáo |
 
-**Việc quan trọng nhất tiếp theo:** chờ người dùng xác nhận Q1/Q2 rồi thu thập ảnh thật (1.2) → `check_dataset.py --prepare` (1.4) → huấn luyện (2.1) → đánh giá (2.2) → export TFLite (3.1) → CLI Termux (3.3). GĐ 0 (fix P0/P1/P2 + git) đã hoàn thành. Mọi việc còn lại đều bị chặn bởi dataset thật và các quyết định ở §5.
+## 4. Thứ tự triển khai (lộ trình đã xác nhận)
+
+> Lộ trình chính thức (2026-11-06): Task 2 → Task 7. Có thể điều chỉnh thứ tự nếu phát sinh phụ thuộc, nhưng phải báo cáo trước khi thay đổi.
+
+1. **Task 2 — Dataset preparation** (đang thực hiện): hoàn thiện cấu trúc dữ liệu, kiểm tra ảnh, manifest, nhóm ảnh theo quả ớt, chia train/validation/test, hướng dẫn thu thập ảnh.
+2. **Task 3 — Data collection:** thu thập ảnh thật, gán nhãn, kiểm tra chất lượng/phân bố.
+3. **Task 4 — Training:** huấn luyện MobileNet, fine-tune, đánh giá.
+4. **Task 5 — TFLite conversion:** chuyển model, kiểm tra preprocessing, đối chiếu TensorFlow ↔ TFLite.
+5. **Task 6 — Termux CLI:** xây dựng CLI Python dùng `python-tflite-runtime`, kiểm thử trên điện thoại thật.
+6. **Task 7 — ESP32-S3 integration:** thiết kế giao tiếp, điều khiển phần cứng, kiểm thử hệ thống hoàn chỉnh.
+
+**Việc quan trọng nhất tiếp theo:** hoàn thành Task 2 (dataset framework + hướng dẫn thu thập), sau đó người dùng thực hiện thu thập ảnh thật (Task 3) dựa trên Q1/Q2.
 
 ## 5. Môi trường train — GPU vs CPU (đã kiểm tra 2026-11-06)
 
@@ -161,8 +176,7 @@
 - **GPU training** = dùng GPU để huấn luyện (TensorFlow/Keras). TensorFlow GPU trên Linux **chủ yếu dựa vào NVIDIA CUDA**. GPU Adreno/Mali trên điện thoại **không** tương thích hướng này.
 - **GPU inference** = dùng GPU điện thoại chạy model đã train (GPU delegate). Đây là vấn đề **khác** hoàn toàn.
 
-**Kết luận:**
-- **Train hiện tại: KHÔNG có GPU trong container → dùng CPU** (đang hoạt động, 36 test pass; training chậm nhưng khả thi với MobileNetV2).
-- Để dùng GTX 1650 cần **tạo lại container** với pass `/dev/nvidia*` **và** cài CUDA/cuDNN libs tương thích TF 2.17 — đây là thay đổi hệ thống/host cần người dùng duyệt, **không thực hiện trong task này**.
-- **Inference trên điện thoại (Termux): ưu tiên CPU.** Chưa có phương án GPU delegate (Adreno/Mali) sẵn sàng cho Termux được kiểm chứng → chưa đề xuất.
-- GTX 1650 chỉ 4GB VRAM và không có Tensor Core (Turing TU117) → lợi ích mixed-precision hạn chế, nhưng vẫn đủ cho MobileNetV2/V3 batch nhỏ 224×224 *nếu* pass được GPU.
+**Kết luận (đã được người dùng xác nhận chính thức):**
+- **Train hiện tại: DÙNG CPU trong container** — đã chốt. Không thay đổi host/Podman, không cài CUDA/cuDNN ở thời điểm này.
+- GTX 1650 để ngỏ cho tương lai: có thể mở task tối ưu GPU riêng khi dataset/thời gian training thực tế cho thấy cần thiết.
+- **Inference trên điện thoại (Termux): ưu tiên CPU.** Chưa triển khai GPU delegate (Adreno/Mali); chỉ xem xét khi có giải pháp tương thích Termux thực tế và chứng minh được lợi ích.
