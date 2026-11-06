@@ -1,0 +1,68 @@
+# Ảnh & dữ liệu (nặng, quản lý riêng)
+dataset/raw/*/*
+dataset/train/**/*
+dataset/validation/**/*
+dataset/test/**/*
+dataset/split_manifest.json
+dataset/groups.csv
+!dataset/raw/**/.gitkeep
+!dataset/train/.gitkeep
+!dataset/validation/.gitkeep
+!dataset/test/.gitkeep
+
+# Model & artifact sinh ra khi huấn luyện/export
+models/checkpoints/**/*
+models/saved_model/**/*
+reports/figures/**/*
+reports/metrics/**/*
+!models/checkpoints/.gitkeep
+!models/saved_model/.gitkeep
+!reports/figures/.gitkeep
+!reports/metrics/.gitkeep
+
+# TFLite: throw các artifact (model, report) nhưng GIỮ tài liệu + labels + metadata
+models/tflite/**/*
+!models/tflite/.gitkeep
+!models/tflite/*.md
+!models/tflite/labels.txt
+!models/tflite/model_metadata.json
+
+# Model file lạc (bất cứ đâu) — phòng ngừa
+*.tflite
+*.keras
+*.h5
+*.hdf5
+*.pb
+*.savedmodel
+*.onnx
+
+# Python & env
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.pytest_cache/
+*.egg-info/
+.tox/
+.coverage
+htmlcov/
+
+# Android (giai đoạn sau)
+.gradle/
+build/
+*.apk
+*.aab
+local.properties
+.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.swp
+nohup.out

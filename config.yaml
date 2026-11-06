@@ -1,0 +1,83 @@
+# Cấu hình dự án chili-ripeness-ai — chỉnh các tham số tại đây
+# Lớp: unripe (chưa chín), medium_ripe (chín vừa), ripe (đã chín)
+
+project:
+  name: chili-ripeness-ai
+  classes: [unripe, medium_ripe, ripe]
+  num_classes: 3
+
+paths:
+  dataset_raw: dataset/raw
+  dataset_train: dataset/train
+  dataset_validation: dataset/validation
+  dataset_test: dataset/test
+  checkpoints: models/checkpoints
+  saved_model: models/saved_model
+  tflite: models/tflite
+  reports_figures: reports/figures
+  reports_metrics: reports/metrics
+  split_manifest: dataset/split_manifest.json
+  groups_file: ""            # CSV tùy chọn: filename,group_id (để tránh rò rỉ cùng quả ớt)
+  # ví dụ: dataset/groups.csv với cột "filename,group_id"
+
+data:
+  image_size: 224              # đầu vào 224x224x3
+  image_channels: 3
+  batch_size: 32
+  supported_extensions: [.jpg, .jpeg, .png]
+  split_ratios: [0.70, 0.15, 0.15]  # train / validation / test
+  shuffle_buffer: 1000
+  num_parallel_calls: 8
+  val_fraction_of_holdout: 0.5        # chia holdout 30% thành val/test 15/15
+
+model:
+  base: mobilenetv2
+  weights: imagenet
+  include_top: false
+  dropout: 0.3
+  fine_tune_layers: 30         # số layer cuối của backbone được fine-tune ở giai đoạn 2
+
+training:
+  seed: 42
+  stage1_epochs: 10            # freeze backbone, chỉ train head
+  stage2_epochs: 20            # fine-tune các layer cuối
+  stage1_lr: 0.001
+  stage2_lr: 0.0001
+  optimizer: adam
+  loss: categorical_crossentropy
+  metrics: [accuracy]
+  early_stopping_patience: 5
+  reduce_lr_patience: 3
+  reduce_lr_factor: 0.5
+  reduce_lr_min_lr: 0.000001
+  class_weight: balanced       # balanced | null
+
+augmentation:
+  # Nhẹ, KHÔNG biến đổi màu mạnh vì màu là đặc trưng chính của độ chín.
+  horizontal_flip: true
+  vertical_flip: false
+  rotation_factor: 0.1         # ~ ±18 độ
+  zoom_factor: 0.1
+  translation_factor: 0.05
+  brightness_factor: 0.05      # rất nhẹ
+  contrast_factor: 0.05        # rất nhẹ
+  hue_factor: 0.0              # KHÔNG đổi hue
+  saturation_factor: 0.0       # KHÔNG đổi saturation
+
+export:
+  # Tên file TFLite (giữ tương thích phần 1); bản Float32 là bản chính
+  tflite_filename: chili_ripeness.tflite
+  float16_filename: chili_ripeness_float16.tflite
+  int8_filename: chili_ripeness_int8.tflite
+  # Bật cả ba loại; INT8 chỉ xuất khi có ảnh train thực tế để calibration
+  export_all: true
+  quantize: false              # legacy (dynamic range) — không dùng cho bản float32
+  representative_dataset: true # INT8 dùng ảnh train thật từ manifest
+  representative_samples: 500  # số ảnh hiệu dụng cho calibration (cắt ngắn nếu ít hơn)
+
+inference:
+  # Ngưỡng confidence cho predict: dưới ngưỡng → trạng thái "uncertain"
+  confidence_threshold: 0.6
+
+evaluation:
+  metrics: [accuracy, precision, recall, f1]

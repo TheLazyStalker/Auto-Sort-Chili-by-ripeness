@@ -1,0 +1,11 @@
+# Môi trường đã kiểm chứng trong container ai-workspace (Python 3.12.3)
+# TensorFlow 2.17.0 yêu cầu numpy<2.0.0 — khóa chặt để tránh xung đột
+tensorflow==2.17.0
+keras==3.15.1
+numpy>=1.26.0,<2.0.0
+Pillow>=10.0.0
+PyYAML>=6.0.0
+scikit-learn==1.5.2
+scipy==1.14.1
+matplotlib>=3.8.0
+pytest>=8.0.0
