@@ -25,18 +25,29 @@
 
 ## 1. Mục tiêu và kiến trúc tổng thể
 
-**Mục tiêu:** Hệ thống phân loại quả ớt 3 mức chín (`unripe` → 0, `medium_ripe` → 1, `ripe` → 2) chạy thời gian thực trên Android, gửi kết quả cho ESP32-S3 để điều khiển cơ cấu phân loại (băng tải / servo / đèn / motor). Ranh giới `medium_ripe`/`ripe` là nhiệm vụ khó nhất vì phụ thuộc tỉ lệ màu chín đồng đều.
+**Mục tiêu:** Hệ thống phân loại quả ớt 3 mức chín (`unripe` → 0, `medium_ripe` → 1, `ripe` → 2) chạy trên điện thoại Android qua **CLI native trong Termux** (dùng LiteRT/TFLite runtime), gửi kết quả cho ESP32-S3 để điều khiển cơ cấu phân loại (băng tải / servo / đèn / motor). Ranh giới `medium_ripe`/`ripe` là nhiệm vụ khó nhất vì phụ thuộc tỉ lệ màu chín đồng đều.
 
-**Kiến trúc (đề xuất, suy ra từ code hiện có — chưa được triển khai phần cứng):**
+**Kiến trúc (đề xuất — chưa triển khai phần cứng):**
 
 ```
-[Camera/Capture] → [Android App: resize 224x224, preprocess, TFLite inference]
-                 → [Android gửi JSON {label,class_id,confidence,uncertain} qua UART/BLE]
-                 → [ESP32-S3: firmware điều khiển servo / băng tải / đèn]
-                 → [Cơ cấu phân loại cơ khí]
+[Camera/Capture trên điện thoại]
+        │
+        ▼
+[Termux: CLI native (Python + python-tflite-runtime)]
+   - nhận ảnh, resize 224×224, giữ [0,255]
+   - LiteRT/TFLite inference → softmax 3 lớp → label + confidence
+        │
+        ▼  (giao tiếp ESP32: CHƯA triển khai ở task này)
+[JSON {label,class_id,confidence,uncertain} qua UART/BLE]
+        │
+        ▼
+[ESP32-S3: firmware điều khiển servo / băng tải / đèn]
+        │
+        ▼
+[Cơ cấu phân loại cơ khí]
 ```
 
-**AI pipeline (đã có khung code):** `dataset/raw/<class>/` → `scan_raw_dataset` (Pillow + md5 trùng/lỗi) → `stratified_group_split` 70/15/15 (seed 42, hỗ trợ `groups.csv`) → `split_manifest.json` → `tf.data` (augment nhẹ, không đổi hue/saturation) → MobileNetV2 ImageNet + GAP + Dropout(0.3) + Dense(3, softmax), 2 giai đoạn (freeze → fine-tune 30 layer) → checkpoint `best_chili.keras` / `chili_final.keras` → `evaluate.py` (accuracy, P/R/F1, confusion matrix) → `export_tflite.py` (Float32/Float16/INT8 + validate/compare) → `.tflite` + `labels.txt` + `model_metadata.json` → Android.
+**AI pipeline (đã có khung code):** `dataset/raw/<class>/` → `scan_raw_dataset` (Pillow + md5 trùng/lỗi) → `stratified_group_split` 70/15/15 (seed 42, hỗ trợ `groups.csv`) → `split_manifest.json` → `tf.data` (augment nhẹ, không đổi hue/saturation) → MobileNetV2 ImageNet + GAP + Dropout(0.3) + Dense(3, softmax), 2 giai đoạn (freeze → fine-tune 30 layer) → checkpoint `best_chili.keras` / `chili_final.keras` → `evaluate.py` (accuracy, P/R/F1, confusion matrix) → `export_tflite.py` (Float32/Float16/INT8 + validate/compare) → `.tflite` + `labels.txt` + `model_metadata.json` → **CLI Termux**.
 
 **Nguyên tắc không phá vỡ:** không tạo ảnh giả, không xoá ảnh gốc, không bịa metric; chia tập theo `group_id` để tránh rò rỉ; màu là tín hiệu chính nên không augment hue/saturation mạnh.
 
@@ -72,62 +83,86 @@
 | 2.4 | Tối ưu: tune dropout/fine_tune_layers/lr, augmentation (vẫn cấm hue mạnh), class_weight, mở rộng dataset khi F1 thấp; ghi mọi thay đổi vào `training_summary.json` | Chưa làm | P2 | 2.2 | Có báo cáo so sánh trước/sau bằng số liệu test (không khẳng định số nếu chưa đo) |
 | 2.5 | Khiểm thử hồi quy: giữ `pytest` 28 pass + thêm test split nhỏ (`n=5`) và guard rỗng; đo thời gian inference CPU nếu cần | Đang làm (28 pass) / bổ sung Chưa làm | P1 | 0.1–0.2, 2.1 | `pytest -q` pass toàn bộ, không còn `_split probe` val/test=0 |
 
-### GĐ 3 — TFLite + Android
+### GĐ 3 — TFLite + CLI Termux
 
 | # | Công việc | Trạng thái | Ưu tiên | Phụ thuộc | Tiêu chí hoàn thành |
 |---|---|---|---|---|---|
 | 3.1 | Xuất TFLite Float32/Float16/INT8 bằng `export_tflite.py`; đọc `export_report.json` (size, validate shape, compare Keras↔TFLite) | Đang làm (code + unit test đã pass trên model chưa train) / Chưa làm (chưa có model thật) | P1 | 2.1 | 3 file `.tflite` tồn tại; `same_label=True`; INT8 chỉ xuất khi có train thật (đã chặn đúng) |
-| 3.2 | Đồng bộ `labels.txt`/`model_metadata.json` do export sinh ra; xác nhận MediaPipe cần metadata writer (tài liệu đã cảnh báo đúng — không tuyên bố tương thích nếu chưa nhúng) | Đang làm (tài liệu) / Chưa làm (metadata writer) | P1 | 0.3, 3.1 | Metadata khớp tiền xử lý đã chốt ở 0.3; có hướng dẫn nhúng metadata nếu đi MediaPipe |
-| 3.3 | Viết Android app Kotlin mới (dự án Gradle riêng): load `.tflite` + labels vào `assets/`, camera/upload ảnh, resize 224×224 + preprocess khớp 0.3, hiển thị label/confidence/uncertain | Chưa làm | P1 | 3.1–3.2 | App build được, predict trên máy thật khớp `predict.py` (cùng ảnh, cùng label) |
-| 3.4 | Đo latency/accuracy trên thiết bị thật (Float32 vs Float16 vs INT8), chọn cấu hình mặc định theo số liệu | Chưa làm | P2 | 3.3 | Có bảng đo latency/accuracy theo thiết bị; không kết luận nếu chưa đo |
+| 3.2 | Đồng bộ `labels.txt`/`model_metadata.json` do export sinh ra; xác nhận runtime Termux (`python-tflite-runtime`) đọc được `.tflite` Float32 | Đang làm (tài liệu) / Chưa làm (kiểm chứng trên điện thoại) | P1 | 0.3, 3.1 | Metadata khớp tiền xử lý đã chốt; có hướng dẫn cài đặt Termux |
+| 3.3 | Viết CLI Termux (Python + `python-tflite-runtime`): đọc ảnh, resize 224×224 + preprocess [0,255], inference `.tflite`, in JSON {label, class_id, confidence, uncertain} | Chưa làm | P1 | 3.1–3.2 | CLI chạy được trong Termux trên máy thật, kết quả khớp `predict.py` (cùng ảnh, cùng label) |
+| 3.4 | Đo latency/accuracy trên thiết bị thật (CPU trước; Float32 vs Float16 vs INT8), chọn cấu hình mặc định theo số liệu | Chưa làm | P2 | 3.3 | Có bảng đo latency/accuracy theo thiết bị; không kết luận nếu chưa đo |
 
-### GĐ 4 — Android ↔ ESP32-S3
+### GĐ 4 — CLI Termux ↔ ESP32-S3
 
 | # | Công việc | Trạng thái | Ưu tiên | Phụ thuộc | Tiêu chí hoàn thành |
 |---|---|---|---|---|---|
-| 4.1 | Chốt protocol: JSON `{label,class_id,confidence}` hoặc `{"status":"uncertain"}` qua UART hay BLE, baud/interval, cơ chế retry khi `uncertain` (chụp lại / chờ người dùng) | Chưa làm (mới có mô tả) | P1 | §5 Q4, 3.3 | Spec 1 trang được duyệt; Android và ESP32 cùng implement theo spec |
-| 4.2 | Android: serialize + gửi/poll (UART/BLE) theo protocol, log `class_id/label/confidence/probabilities` | Chưa làm | P1 | 3.3, 4.1 | Log khớp output `predict.py`; `uncertain` không phát động cơ cấu |
+| 4.1 | Chốt protocol: JSON `{label,class_id,confidence}` hoặc `{"status":"uncertain"}` qua UART hay BLE, baud/interval, cơ chế retry khi `uncertain` (chụp lại / chờ người dùng) | Chưa làm (mới có mô tả) | P1 | §5 Q4, 3.3 | Spec 1 trang được duyệt; CLI Termux và ESP32 cùng implement theo spec |
+| 4.2 | CLI Termux: serialize + gửi/poll (UART/BLE) theo protocol, log `class_id/label/confidence/probabilities` | Chưa làm | P1 | 3.3, 4.1 | Log khớp output `predict.py`; `uncertain` không phát động cơ cấu |
 | 4.3 | Chưa có sản phẩm firmware ESP32-S3 nếu không có phần cứng thật (xem GĐ 5) | Bị chặn | — | 4.1 | — |
 
 ### GĐ 5 — Phần cứng: camera, băng tải, cảm biến, servo
 
 | # | Công việc | Trạng thái | Ưu tiên | Phụ thuộc | Tiêu chí hoàn thành |
 |---|---|---|---|---|---|
-| 5.1 | Chốt BOM phần cứng: camera (OV5640/ESP32-CAM/global shutter?), băng tải, cảm biến có/không quả, servo cơ cấu phân loại 3 ngăn, nguồn/điện áp, khung đỡ | Bị chặn (cần người dùng xác nhận: có phần cứng thật không, ngân sách, nhất là camera đơn vs Android camera trực tiếp) | P1 | §5 Q3–Q5 | BOM + sơ đồ wiring được duyệt trước khi code firmware |
-| 5.2 | Nếu camera là Android native (không cần ESP32-CAM): chốt kiến trúc “AI trên Android → ESP32 chỉ điều khiển cơ cấu” và bỏ qua ESP32-CAM | Chưa làm | P1 | 5.1 | Kiến trúc đã chốt, ghi vào roadmap (không assumptions) |
+| 5.1 | Chốt BOM phần cứng: camera (OV5640/ESP32-CAM/global shutter?), băng tải, cảm biến có/không quả, servo cơ cấu phân loại 3 ngăn, nguồn/điện áp, khung đỡ | Bị chặn (cần người dùng xác nhận: có phần cứng thật không, ngân sách, nhất là camera điện thoại vs module riêng) | P1 | §5 Q3–Q5 | BOM + sơ đồ wiring được duyệt trước khi code firmware |
+| 5.2 | Nếu camera dùng điện thoại (Termux): chốt kiến trúc “AI trên Termux → ESP32 chỉ điều khiển cơ cấu” và bỏ qua ESP32-CAM | Chưa làm | P1 | 5.1 | Kiến trúc đã chốt, ghi vào roadmap (không assumptions) |
 
 ### GĐ 6 — Firmware ESP32-S3 + tích hợp toàn hệ thống
 
 | # | Công việc | Trạng thái | Ưu tiên | Phụ thuộc | Tiêu chí hoàn thành |
 |---|---|---|---|---|---|
 | 6.1 | Viết firmware ESP32-S3 (Arduino/ESP-IDF): đọc JSON, điều khiển servo/băng tải/đèn, xử lý `uncertain` (không di chuyển hoặc về vị trí chờ), watchdog, log UART | Chưa làm | P1 | 4.1, 5.1 | Nạp thành công lên ESP32 thật, servo di chuyển đúng theo label |
-| 6.2 | Tích hợp end-to-end: ảnh → Android → ESP32 → cơ cấu phân loại; đo tỉ lệ phân loại đúng trên quả thật (so với nhãn người) và latency toàn hệ thống | Chưa làm | P1 | 3.3, 4.2, 6.1 | Video/log demo end-to-end; bảng kết quả thật trên ≥50 quả (không bịa) |
+| 6.2 | Tích hợp end-to-end: ảnh → Termux CLI → ESP32 → cơ cấu phân loại; đo tỉ lệ phân loại đúng trên quả thật (so với nhãn người) và latency toàn hệ thống | Chưa làm | P1 | 3.3, 4.2, 6.1 | Video/log demo end-to-end; bảng kết quả thật trên ≥50 quả (không bịa) |
 
 ### GĐ 7 — Kiểm thử, tài liệu, trình diễn
 
 | # | Công việc | Trạng thái | Ưu tiên | Phụ thuộc | Tiêu chí hoàn thành |
 |---|---|---|---|---|---|
-| 7.1 | Test toàn hệ thống: `pytest`, smoke, export compare, kiểm tra Android trên thiết bị, phân loại trên băng tải | Đang làm (unit 28 pass) / phần còn lại Chưa làm | P1 | GĐ 2–6 | Checklist test pass theo từng tầng, không còn chỉ unit với tensor ngẫu nhiên |
-| 7.2 | Cập nhật `README.md`/`DATASET_GUIDE.md`/`android_integration.md`: số liệu thật, kinh nghiệm, giới hạn (giống ớt, ánh sáng), link weights/model | Đang làm (draft) / Chưa làm (số liệu thật) | P2 | 2.2, 3.4, 6.2 | Tài liệu phản ánh thực tế đã đo, không còn mô tả [0,1] sai |
-| 7.3 | Chuẩn bị trình diễn: video, slide, danh mục file model/dataset, cách tái lập (`pip install -r requirements.txt`, train, export) | Chưa làm | P2 | 7.1–7.2 | Người khác chạy được pipeline từ README trong môi trường sạch |
+| 7.1 | Test toàn hệ thống: `pytest`, smoke, export compare, kiểm tra CLI Termux trên thiết bị, phân loại trên băng tải | Đang làm (unit 36 pass) / phần còn lại Chưa làm | P1 | GĐ 2–6 | Checklist test pass theo từng tầng, không còn chỉ unit với tensor ngẫu nhiên |
+| 7.2 | Cập nhật `README.md`/`DATASET_GUIDE.md`/`TERMUX_DEPLOYMENT.md`: số liệu thật, kinh nghiệm, giới hạn (giống ớt, ánh sáng), link weights/model | Đang làm (draft) / Chưa làm (số liệu thật) | P2 | 2.2, 3.4, 6.2 | Tài liệu phản ánh thực tế đã đo, không còn mô tả [0,1] sai |
+| 7.3 | Chuẩn bị trình diễn: video, slide, danh mục file model/dataset, cách tái lập (`pip install -r requirements.txt`, train, export, cài CLI Termux) | Chưa làm | P2 | 7.1–7.2 | Người khác chạy được pipeline từ README trong môi trường sạch |
 
 ## 3. Vấn đề chưa rõ — cần người dùng xác nhận (§5)
 
 - **Q1 Giống ớt + điều kiện chụp:** chốt 1–2 giống, ánh sáng, nền, khoảng cách không? (Quyết định ranh giới màu chín.)
 - **Q2 Tiêu chí nhãn `medium_ripe` vs `ripe`:** giữ ngưỡng >90% diện tích đồng đều như `DATASET_GUIDE.md`, hay theo chỉ thị khác (độ cứng, đường kính, chỉ thiên vs sừng)?
-- **Q3 Phần cứng là thật hay mô phỏng:** đã có ESP32-S3 / camera / băng tải / servo chưa? Ngân sách? Hay chỉ demo Android + mô hình cơ khí?
-- **Q4 Giao tiếp:** UART hay BLE giữa Android và ESP32? Có cần hỗ trợ cloud/logging?
-- **Q5 Camera:** dùng camera Android chụp trực tiếp, hay camera module riêng (OV5640, ESP32-CAM)? Độ phân giải / FPS yêu cầu?
+- **Q3 Phần cứng là thật hay mô phỏng:** đã có ESP32-S3 / camera / băng tải / servo chưa? Ngân sách? Hay chỉ demo Termux CLI + mô hình cơ khí?
+- **Q4 Giao tiếp:** UART hay BLE giữa Termux CLI và ESP32? Có cần hỗ trợ cloud/logging?
+- **Q5 Camera:** dùng camera điện thoại chụp rồi đưa vào Termux CLI, hay camera module riêng (OV5640, ESP32-CAM)? Độ phân giải / FPS yêu cầu?
 - **Q6 Yêu cầu độ chính xác/latency:** target accuracy tối thiểu, thời gian phân loại tối đa cho 1 quả, throughput băng tải (quả/giây)?
 - **Q7 Quyền ảnh:** có được dùng ảnh từ nguồn công khai (bản quyền/street view) hay chỉ ảnh tự chụp?
-- **Q8 Môi trường train:** CPU-only hiện tại đủ (train chậm nhưng khả thi) hay có dự định thêm GPU?
+- **Q8 Môi trường train:** CPU-only hiện tại đủ (train chậm nhưng khả thi) hay có dự định thêm GPU (cần pass GPU vào container — xem §5)?
 
 ## 4. Thứ tự triển khai đề xuất + bước tiếp theo
 
-1. **Tuần 1 (đã hoàn thành):** GĐ 0 (0.1–0.6) → `pytest` 36 pass + probe split nhỏ → chốt preprocessing → git init + commit hiện trạng (`2402f86`).
+1. **Tuần 1 (đã hoàn thành):** GĐ 0 (0.1–0.6) → `pytest` 36 pass + probe split nhỏ → chốt preprocessing → git init + commit + push GitHub.
 2. **Tuần 2:** Chờ Q1/Q2 → thu thập ảnh (1.2) + `groups.csv` (1.3) → `check_dataset.py --prepare` (1.4).
 3. **Tuần 3:** Huấn luyện (2.1) → đánh giá (2.2) → predict end-to-end (2.3) → export TFLite (3.1).
-4. **Tuần 4:** Android app (3.3) → đo trên thiết bị (3.4) → chốt protocol (4.1) → chờ Q3/Q5 để đi GĐ 5–6.
-5. **Tuần 5+:** Firmware + tích hợp (6.1–6.2) → test/tài liệu/demo (GĐ 7).
+4. **Tuần 4:** CLI Termux (3.3) → cài `python-tflite-runtime` + copy model → đo trên điện thoại (3.4) → chốt protocol (4.1).
+5. **Tuần 5+:** Chờ Q3/Q5 → firmware + tích hợp (6.1–6.2) → test/tài liệu/demo (GĐ 7).
 
-**Việc quan trọng nhất tiếp theo:** chờ người dùng xác nhận Q1/Q2 rồi thu thập ảnh thật (1.2) → `check_dataset.py --prepare` (1.4) → huấn luyện (2.1) → đánh giá (2.2) → export TFLite (3.1). GĐ 0 (fix P0/P1/P2 + git) đã hoàn thành. Mọi việc còn lại đều bị chặn bởi dataset thật và các quyết định ở §5.
+**Việc quan trọng nhất tiếp theo:** chờ người dùng xác nhận Q1/Q2 rồi thu thập ảnh thật (1.2) → `check_dataset.py --prepare` (1.4) → huấn luyện (2.1) → đánh giá (2.2) → export TFLite (3.1) → CLI Termux (3.3). GĐ 0 (fix P0/P1/P2 + git) đã hoàn thành. Mọi việc còn lại đều bị chặn bởi dataset thật và các quyết định ở §5.
+
+## 5. Môi trường train — GPU vs CPU (đã kiểm tra 2026-11-06)
+
+**Kết quả kiểm tra thực tế trong container `ai-workspace`:**
+
+| Kiểm tra | Lệnh | Kết quả |
+|---|---|---|
+| GPU trong container | `ls /dev/nvidia*` | **Không có** (không được pass) |
+| `nvidia-smi` trong container | `which nvidia-smi` | **Không có** |
+| TF nhận GPU | `tf.config.list_physical_devices("GPU")` | **`[]`** (chỉ CPU) |
+| CUDA/cuDNN libs trong container | `find / -name "libcudart.so*"` | **Không có** |
+| GPU trên host | `nvidia-smi` (host) | **GTX 1650, 4GB VRAM, driver 580.196.07, CUDA 13.0** |
+| Podman pass device (thử) | `podman run --device /dev/nvidia0 ...` | **Có thể** pass thủ công (đã thử) |
+| `nvidia-container-toolkit` trên host | `ls /usr/bin/nvidia-container-toolkit` | **Không có** |
+
+**Phân biệt (quan trọng):**
+- **GPU training** = dùng GPU để huấn luyện (TensorFlow/Keras). TensorFlow GPU trên Linux **chủ yếu dựa vào NVIDIA CUDA**. GPU Adreno/Mali trên điện thoại **không** tương thích hướng này.
+- **GPU inference** = dùng GPU điện thoại chạy model đã train (GPU delegate). Đây là vấn đề **khác** hoàn toàn.
+
+**Kết luận:**
+- **Train hiện tại: KHÔNG có GPU trong container → dùng CPU** (đang hoạt động, 36 test pass; training chậm nhưng khả thi với MobileNetV2).
+- Để dùng GTX 1650 cần **tạo lại container** với pass `/dev/nvidia*` **và** cài CUDA/cuDNN libs tương thích TF 2.17 — đây là thay đổi hệ thống/host cần người dùng duyệt, **không thực hiện trong task này**.
+- **Inference trên điện thoại (Termux): ưu tiên CPU.** Chưa có phương án GPU delegate (Adreno/Mali) sẵn sàng cho Termux được kiểm chứng → chưa đề xuất.
+- GTX 1650 chỉ 4GB VRAM và không có Tensor Core (Turing TU117) → lợi ích mixed-precision hạn chế, nhưng vẫn đủ cho MobileNetV2/V3 batch nhỏ 224×224 *nếu* pass được GPU.

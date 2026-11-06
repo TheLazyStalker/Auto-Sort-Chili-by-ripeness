@@ -1,5 +1,7 @@
 # Tích hợp Android — chili-ripeness-ai (MobileNetV2, 3 lớp ớt)
 
+> **⚠️ DEPRECATED (2026-11-06):** Hướng phát triển Android app (APK/Kotlin/Android Studio/MediaPipe) đã **được bỏ**. Kiến trúc triển khai mới là **CLI/native chạy trong Termux** — xem [`TERMUX_DEPLOYMENT.md`](./termux_deployment.md). Tài liệu này giữ lại để tham khảo kỹ thuật (tiền xử lý, output, giao tiếp ESP32); **không** còn là lộ trình chính.
+
 > **Lưu ý tương thích MediaPipe:** file `.tflite` thô (export từ Keras) **không tự tương thích** MediaPipe Tasks Vision Image Classifier. MediaPipe yêu cầu metadata (labels + tensor associates) nhúng trong file qua **Model Metadata Writer** (công cụ Task Library). Hướng dẫn: `https://ai.google.dev/mediapipe/solutions/vision/image_classifier/android` và `https://ai.google.dev/mediapipe/tasks-vision` (metadata writer: `org.tensorflow:tensorflow-lite-metadata`). Nếu chưa nhúng metadata, hãy dùng TensorFlow Lite Task Library (`ImageClassifier`) hoặc Interpreter trực tiếp — vẫn chạy được mà không cần MediaPipe.
 
 ## 1. Model được khuyến nghị

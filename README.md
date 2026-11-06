@@ -1,7 +1,7 @@
 # chili-ripeness-ai — Phân loại độ chín ớt 3 lớp bằng MobileNetV2
 
-Phân loại quả ớt thành `unripe` (chưa chín) / `medium_ripe` (chín vừa) / `ripe` (đã chín) bằng **MobileNetV2 pretrained ImageNet + Transfer Learning**, đầu vào RGB 224×224, đầu ra Softmax 3 lớp. Mục tiêu cuối: chạy trên Android bằng TensorFlow Lite/MediaPipe. Chủ đạo sử dụng qua ESP32 làm transfer.
-Progress: Chưa Hoàn Thành - 25%.
+Phân loại quả ớt thành `unripe` (chưa chín) / `medium_ripe` (chín vừa) / `ripe` (đã chín) bằng **MobileNetV2 pretrained ImageNet + Transfer Learning**, đầu vào RGB 224×224, đầu ra Softmax 3 lớp. Mục tiêu triển khai: **chương trình CLI/native chạy trong Termux trên điện thoại Android** (dùng LiteRT/TFLite runtime), có khả năng mở rộng giao tiếp ESP32-S3 để điều khiển cơ cấu phân loại. Phần 1 này là nền tảng huấn luyện trên máy tính.
+Progress: Chưa Hoàn Thành - ~25%.
 
 ## 1. Môi trường đã kiểm chứng (container `ai-workspace`)
 
