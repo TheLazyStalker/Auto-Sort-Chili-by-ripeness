@@ -17,8 +17,10 @@ paths:
   reports_figures: reports/figures
   reports_metrics: reports/metrics
   split_manifest: dataset/split_manifest.json
-  groups_file: ""            # CSV tùy chọn: filename,group_id (để tránh rò rỉ cùng quả ớt)
-  # ví dụ: dataset/groups.csv với cột "filename,group_id"
+  # CSV tùy chọn: filename,group_id (để tránh rò rỉ cùng quả ớt).
+  # Khi chưa có ảnh thật, giữ "" để chuẩn bị; khi bắt đầu thu thập ảnh,
+  # đặt thành dataset/groups.csv (xem dataset/groups.example.csv để biết định dạng).
+  groups_file: ""
 
 data:
   image_size: 224              # đầu vào 224x224x3

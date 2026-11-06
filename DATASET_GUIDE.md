@@ -8,39 +8,70 @@
 | `medium_ripe` | Chín vừa, chuyển màu dở dang, còn vệt xanh xen kẽ chín | Xanh xen đỏ/đỏ cam, mỗi quả khác nhau |
 | `ripe` | Đã chín, màu chín đồng đều, vỏ bóng, cuống hơi khô | Đỏ / đỏ sậm / vàng cam tùy giống |
 
-> Ghi chú: màu chín phụ thuộc giống ớt (ớt sừng, ớt chỉ thiên, ớt ngọt…). Hãy chọn **một hoặc ít giống**, chụp trong cùng điều kiện ánh sáng để model học được ranh giới màu, thay vì trộn nhiều giống khác nhau ngay từ đầu.
+> Ghi chú: màu chín phụ thuộc giống ớt (ớt sừng, ớt chỉ thiên, ớt ngọt…). Hãy chọn **một hoặc ít giống**, chụp trong cùng điều kiện ánh sáng để model học được ranh giới màu, thay vì trộn nhiều giống khác nhau ngay từ đầu. Chưa đặt ngưỡng màu cố định khi chưa xác định giống ớt.
 
-## 2. Chọn giống & môi trường chụp
+## 2. Cấu trúc thư mục dataset
+
+```
+dataset/
+├── raw/
+│   ├── unripe/          # ảnh chưa chín
+│   ├── medium_ripe/     # ảnh chín vừa
+│   └── ripe/            # ảnh đã chín
+├── train/               # (tự sinh bởi --prepare, không sửa tay)
+├── validation/          # (tự sinh bởi --prepare)
+├── test/                # (tự sinh bởi --prepare)
+├── groups.csv           # [tùy chọn] filename,group_id — phân nhóm theo quả
+├── groups.example.csv    # template định dạng groups.csv (tham khảo)
+└── split_manifest.json   # (tự sinh bởi --prepare) siêu dữ liệu chia tập
+```
+
+Không có ảnh thật trong `dataset/raw/<class>/` khi `--prepare` được kiểm tra an toàn: script báo rõ "Dataset trống" và dừng, không tạo kết quả giả.
+
+## 3. Chọn giống & môi trường chụp
 
 - Ưu tiên 1 giống chiếm đa số; nếu nhiều giống, ghi lại giống của mỗi ảnh trong `groups.csv` (hoặc metadata riêng).
 - Chụp gần, quả ớt chiếm phần lớn khung hình; nền đơn giản và nhất quán (tránh nền tô màu tương tự vỏ để không rối model).
 - Ánh sáng tự nhiên đồng đều (ban ngày, tránh nắng gắt), tránh flash, tránh họng chiếu bóng làm đổi màu.
 - Điện thoại ngang hàng quả ớt, khoảng cách ổn định; ưu tiên độ phân giải ≥ 1080p, format JPG.
+- **Số lượng khuyến nghị:** tối thiểu **~30 ảnh/lớp** để chia đủ 3 tập có ý nghĩa (train/val/test) và cho model học được sự biến thiên. Dataset càng nhiều (đặc biệt giúp phân biệt `medium_ripe` vs `ripe`) càng tốt.
 
-## 3. Thu thập theo nhóm (quan trọng nhất)
+## 4. Thu thập theo nhóm (quan trọng nhất)
 
-- **Gán group ID cho mỗi quả ớt:** mọi ảnh của cùng 1 quả (chụp góc khác, góc khác, khung hình khác) phải chung `group_id`. File `dataset/groups.csv` có dạng:
+- **Gán group ID cho mỗi quả ớt:** mọi ảnh của cùng 1 quả (chụp góc khác, ánh sáng khác, khung hình khác) phải chung `group_id`. File `dataset/groups.csv` có dạng:
 
   ```csv
   filename,group_id
   0001_unripe_1.jpg,pepper_0001
-  0002_unripe_1.jpg,pepper_0002
+  0002_unripe_2.jpg,pepper_0002
   ```
 
-- Nếu đặt `groups_file` trong `config.yaml`: `paths.groups_file: dataset/groups.csv`. Dataset loader sẽ chia theo **nhóm** để ảnh cùng 1 quả **không bao giờ** lọt sang nhiều tập — nếu không, model “nhớ mặt” quả ớt và metric trên tập test sẽ ảo (rò rỉ dữ liệu).
+  Xem `dataset/groups.example.csv` để biết template đầy đủ.
 
-## 4. Đặt nhãn nhất quán
+- Nếu đặt `groups_file` trong `config.yaml`: `paths.groups_file: dataset/groups.csv`. Dataset loader sẽ chia theo **nhóm** để ảnh cùng 1 quả **không bao giờ** lọt sang nhiều tập — nếu không, model "nhớ mặt" quả ớt và metric trên tập test sẽ ảo (rò rỉ dữ liệu).
+
+## 5. Đặt nhãn nhất quán
 
 - Mỗi quả ớt chỉ thuộc **một nhãn** duy nhất; nếu không chắc chắn, bỏ qua quả đó hoặc hỏi người thứ hai xác minh.
-- Phân biệt rõ `medium_ripe` và `ripe`: khi vỏ đã đồng đều màu chín (>90% diện tích) thì là `ripe`; còn xen vệt xanh rõ rệt là `medium_ripe`.
+- Phân biệt rõ `medium_ripe` và `ripe`: khi vỏ đã đồng đều màu chín (>90% diện tích) thì là `ripe`; còn xen vệt xanh rõ rệt là `medium_ripe`. (Ngưỡng chính xác sẽ được chốt sau khi xác định giống — xem Q1/Q2.)
 - Kiểm tra lại ngẫu nhiên 10% ảnh sau khi chia tập; ảnh trùng nội dung sẽ được báo trong `reports`/script.
 
-## 5. Quy trình đưa vào dự án
+## 6. Quy trình đưa vào dự án
 
 1. Đặt ảnh vào `dataset/raw/unripe/`, `medium_ripe/`, `ripe/` (file `.jpg/.jpeg/.png`).
 2. (Tùy chọn) Tạo `dataset/groups.csv` và trỏ `paths.groups_file` trong `config.yaml`.
-3. Chạy `python scripts/check_dataset.py` → kiểm tra số lượng, ảnh lỗi, trùng lặp.
-4. Chạy `python scripts/check_dataset.py --prepare` → tạo `dataset/split_manifest.json` và copy vào `train/validation/test` (70/15/15, stratified, seed 42). Ảnh gốc **không bị xóa**.
-5. Huấn luyện: `python -m src.train`; đánh giá: `python -m src.evaluate --split test`.
+3. Chạy `python scripts/check_dataset.py` → kiểm tra số lượng, ảnh lỗi, trùng lặp, và cảnh báo lớp thiếu ảnh.
+4. (Tùy chọn) Chạy `python scripts/check_dataset.py --report` → ghi báo cáo scan ra `reports/metrics/dataset_scan.json`.
+5. Chạy `python scripts/check_dataset.py --prepare` → tạo `dataset/split_manifest.json` và copy vào `train/validation/test` (70/15/15, stratified, seed 42). Ảnh gốc **không bị xóa**.
+6. Huấn luyện: `python -m src.train`; đánh giá: `python -m src.evaluate --split test`.
 
-> Không tự chia lại nếu không cần: script sẽ dùng manifest sẵn có. Chỉ thêm `--force-resplit` (hoặc `--prepare` sau khi xóa manifest) khi muốn chia lại từ đầu.
+> Không tự chia lại nếu không cần: script sẽ dùng manifest sẵn có. Chỉ thêm `--force-resplit` khi muốn chia lại từ đầu (ví dụ sau khi bổ sung ảnh mới vào `raw/`).
+
+## 7. Các script hỗ trợ
+
+| Lệnh | Chức năng |
+|---|---|
+| `python scripts/check_dataset.py` | Kiểm tra dataset (đếm, lỗi, trùng, cảnh báo ít ảnh) |
+| `python scripts/check_dataset.py --prepare` | Tạo manifest + chia tập + copy vào train/val/test |
+| `python scripts/check_dataset.py --prepare --force-resplit` | Chia lại từ đầu, bỏ qua manifest cũ |
+| `python scripts/check_dataset.py --report` | Ghi báo cáo scan ra `reports/metrics/dataset_scan.json` |

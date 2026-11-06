@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import csv
+import datetime
 import hashlib
 import json
 import os
@@ -17,6 +18,8 @@ import shutil
 from dataclasses import dataclass, field
 
 import numpy as np
+
+from .utils import ensure_dir
 
 SUPPORTED_EXTENSIONS = (".jpg", ".jpeg", ".png")
 SPLIT_NAMES = ("train", "validation", "test")
@@ -101,6 +104,28 @@ def scan_raw_dataset(raw_root: str, classes: list) -> DatasetSummary:
         counts=counts, files=files, total=sum(counts.values()),
         duplicates=duplicates, corrupt=corrupt,
     )
+
+
+def generate_groups_template(raw_root: str, classes: list, out_path: str | None = None) -> str:
+    """Sinh template dataset/groups.csv từ các ảnh hiện có trong dataset/raw/.
+
+    - Liệt kê mọi ảnh hợp lệ (filename) với cột group_id để trống.
+    - Người dùng điền group_id cho từng quả ớt (mọi ảnh cùng quả cùng mã).
+    - Nếu out_path=None → không ghi file, chỉ trả về nội dung CSV.
+    - Không tạo ảnh; chỉ đọc cấu trúc hiện có.
+    """
+    summary = scan_raw_dataset(raw_root, classes)
+    lines = ["filename,group_id"]
+    for cls in classes:
+        for p in summary.files.get(cls, []):
+            lines.append(f"{os.path.basename(p)},")
+    content = "\n".join(lines) + "\n"
+    if out_path:
+        ensure_dir(os.path.dirname(os.path.abspath(out_path)))
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return out_path
+    return content
 
 
 def load_groups_file(groups_path: str) -> dict:
@@ -205,6 +230,21 @@ def stratified_group_split(
     for name in SPLIT_NAMES:
         rng.shuffle(splits[name])
     return splits
+
+
+def write_scan_report(summary: DatasetSummary, report_path: str, classes: list | None = None) -> str:
+    """Ghi báo cáo quét dataset ra JSON (thống kê, lỗi, trùng, danh sách file).
+
+    Dùng để theo dõi trạng thái dataset trước và sau khi thu thập ảnh.
+    """
+    classes = classes or list(summary.counts)
+    ensure_dir(os.path.dirname(os.path.abspath(report_path)))
+    report = summary.to_dict()
+    report["classes"] = classes
+    report["generated_at"] = datetime.datetime.now().isoformat(timespec="seconds")
+    with open(report_path, "w", encoding="utf-8") as f:
+        json.dump(report, f, indent=2, ensure_ascii=False)
+    return report_path
 
 
 def save_split_manifest(splits: dict, manifest_path: str, classes: list) -> str:

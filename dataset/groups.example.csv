@@ -1,0 +1,16 @@
+# Ví dụ về định dạng dataset/groups.csv (KHÔNG phải dữ liệu thật).
+# - Cột 1: filename (khớp chính xác tên file ảnh trong dataset/raw/<class>/)
+# - Cột 2: group_id (mã định danh quả ớt — mọi ảnh của cùng 1 quả dùng chung mã)
+# - Mọi ảnh cùng group_id sẽ luôn nằm trong cùng một tập (train/validation/test)
+#   để tránh rò rỉ dữ liệu (model "nhớ mặt" quả ớt).
+# - Để sử dụng: đổi tên thành dataset/groups.csv và set paths.groups_file trong config.yaml.
+#
+filename,group_id
+0001_unripe_1.jpg,pepper_0001
+0002_unripe_1.jpg,pepper_0001
+0003_unripe_2.jpg,pepper_0002
+0004_unripe_2.jpg,pepper_0002
+0005_medium_ripe_1.jpg,pepper_0003
+0006_medium_ripe_1.jpg,pepper_0003
+0007_ripe_1.jpg,pepper_0004
+0008_ripe_1.jpg,pepper_0004

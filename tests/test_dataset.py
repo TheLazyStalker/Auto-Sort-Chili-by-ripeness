@@ -195,3 +195,60 @@ def test_build_tf_datasets_empty_split_no_crash(tmp_path):
     cfg["paths"]["split_manifest"] = str(mp)
     ds = build_tf_datasets(cfg)
     assert sum(1 for _ in ds["validation"]) == 0  # val rỗng, không crash
+
+
+def test_write_scan_report(tmp_path):
+    from src.dataset import write_scan_report
+    raw = tmp_path / "raw"
+    _make_image(str(raw / "unripe" / "a.jpg"), (255, 0, 0))
+    (raw / "medium_ripe").mkdir(parents=True, exist_ok=True)
+    (raw / "ripe").mkdir(parents=True, exist_ok=True)
+    summary = scan_raw_dataset(str(raw), ["unripe", "medium_ripe", "ripe"])
+    report_path = str(tmp_path / "reports" / "metrics" / "dataset_scan.json")
+    write_scan_report(summary, report_path, ["unripe", "medium_ripe", "ripe"])
+    import json
+    with open(report_path) as f:
+        data = json.load(f)
+    assert data["total"] == 1
+    assert data["counts"] == {"unripe": 1, "medium_ripe": 0, "ripe": 0}
+    assert "generated_at" in data
+    assert data["classes"] == ["unripe", "medium_ripe", "ripe"]
+
+
+def test_prepare_datasets_force_resplit(tmp_path):
+    """force_resplit=True phải chia lại và ghi đè manifest cũ."""
+    cfg = load_config()
+    raw = tmp_path / "raw"
+    for c in ["unripe", "medium_ripe", "ripe"]:
+        for i in range(10):
+            _make_image(str(raw / c / f"{c}_{i}.jpg"), color=(i * 10, 10, 200))
+    cfg = _patch_paths(cfg, raw)
+    r1 = prepare_datasets(cfg, copy_to_split_dirs=True)
+    # Đổi nội dung ảnh để nếu có chia lại thì số lượng vẫn giữ, nhưng thời điểm khác
+    r2 = prepare_datasets(cfg, copy_to_split_dirs=True, force_resplit=True)
+    assert r2["splits"] == r1["splits"] == {"train": 21, "validation": 6, "test": 3}
+    # Manifest vẫn được ghi khi force_resplit (không bỏ qua)
+    assert os.path.isfile(cfg["paths"]["split_manifest"])
+
+
+def test_generate_groups_template(tmp_path):
+    from src.dataset import generate_groups_template
+    raw = tmp_path / "raw"
+    _make_image(str(raw / "unripe" / "u1.jpg"))
+    _make_image(str(raw / "unripe" / "u2.jpg"))
+    _make_image(str(raw / "ripe" / "r1.jpg"))
+    (raw / "medium_ripe").mkdir(parents=True, exist_ok=True)
+    # Không ghi file → trả về nội dung CSV
+    content = generate_groups_template(str(raw), ["unripe", "medium_ripe", "ripe"])
+    assert content.startswith("filename,group_id\n")
+    assert "u1.jpg,\n" in content
+    assert "u2.jpg,\n" in content
+    assert "r1.jpg,\n" in content
+    assert "medium_ripe" not in content  # không có ảnh
+    # Ghi ra file
+    out = tmp_path / "groups.csv"
+    generate_groups_template(str(raw), ["unripe", "medium_ripe", "ripe"], out_path=str(out))
+    with open(out) as f:
+        data = f.read()
+    assert "u1.jpg," in data
+
