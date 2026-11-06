@@ -136,3 +136,62 @@ def test_load_groups_file(tmp_path):
 def test_compute_class_weight_balanced():
     w = compute_class_weight(np.array([0, 0, 0, 1, 2]), 3)
     assert w[0] < w[1] and w[0] < w[2]
+
+
+def test_split_small_n_gives_nonempty_when_possible():
+    """n>=3/lớp → cả 3 tập không rỗng; n=2 → cảnh báo (không thể chia)."""
+    import warnings
+    classes = ["unripe", "medium_ripe", "ripe"]
+    for n in (3, 5, 7, 20):
+        cf = {c: [f"{c}_{i}.jpg" for i in range(n)] for c in classes}
+        splits = stratified_group_split(cf, classes, seed=42)
+        assert all(len(splits[k]) > 0 for k in ("train", "validation", "test"))
+    # n=2: không thể chia 3 tập, phải cảnh báo và train/val không rỗng, test có thể rỗng
+    cf2 = {c: [f"{c}_{i}.jpg" for i in range(2)] for c in classes}
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        splits2 = stratified_group_split(cf2, classes, seed=42)
+    assert any("không đủ" in str(x.message) for x in w)
+
+
+def test_split_no_overlap_even_with_groups():
+    """Ảnh cùng 1 quả ớt (group) không bao giờ lọt vào 2 tập khác nhau."""
+    classes = ["unripe", "medium_ripe", "ripe"]
+    cf = {"unripe": [f"u{i}.jpg" for i in range(20)],
+          "medium_ripe": [], "ripe": [f"r{i}.jpg" for i in range(20)]}
+    groups = {}
+    for i in range(5):
+        for j in range(4):
+            groups[f"u{i*4+j}.jpg"] = f"pepper_{i}"
+    splits = stratified_group_split(cf, ["unripe", "ripe"], seed=42, groups=groups)
+    split_of = {}
+    for name, items in splits.items():
+        for p, _ in items:
+            g = groups.get(p)
+            if g:
+                assert split_of.setdefault(g, name) == name, f"Rò rỉ group {g}"
+
+
+def test_build_tf_datasets_empty_split_no_crash(tmp_path):
+    """Manifest có split rỗng → build_tf_datasets không crash, val dataset rỗng."""
+    from PIL import Image
+    from src.dataset import build_tf_datasets
+    cfg = load_config()
+    raw = tmp_path / "raw"
+    paths = []
+    for i in range(2):
+        p = raw / f"img{i}.jpg"
+        _make_image(str(p))
+        paths.append(str(p))
+    manifest = {
+        "train": [{"path": paths[0], "label": 0, "class": "unripe"}],
+        "validation": [],
+        "test": [{"path": paths[1], "label": 1, "class": "medium_ripe"}],
+    }
+    mp = tmp_path / "split_manifest.json"
+    import json
+    mp.write_text(json.dumps(manifest))
+    cfg = _patch_paths(cfg, raw)
+    cfg["paths"]["split_manifest"] = str(mp)
+    ds = build_tf_datasets(cfg)
+    assert sum(1 for _ in ds["validation"]) == 0  # val rỗng, không crash

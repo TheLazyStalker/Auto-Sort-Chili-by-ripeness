@@ -10,18 +10,18 @@
 
 | Hạng mục | Bằng chứng thực tế | Trạng thái |
 |---|---|---|
-| Cấu trúc dự án | `src/` (10 file .py), `scripts/` (2 file), `tests/` (5 file), `config.yaml`, `requirements.txt`, `README.md`, `DATASET_GUIDE.md`, `models/tflite/` (chỉ .md/.txt/.json) | Đã hoàn thành (khung) |
+| Cấu trúc dự án | `src/` (10 file .py), `scripts/` (2 file), `tests/` (7 file, gồm test_failsafe.py), `config.yaml`, `requirements.txt`, `README.md`, `DATASET_GUIDE.md`, `models/tflite/` (chỉ .md/.txt/.json) | Đã hoàn thành (khung) |
 | Dataset ảnh | `dataset/raw/{unripe,medium_ripe,ripe}/` **rỗng**, `dataset/train|validation|test/` rỗng, không có `split_manifest.json`; `find dataset -type f = 0` | Bị chặn (thiếu ảnh thật) |
 | Model đã huấn luyện | `models/checkpoints/`, `models/saved_model/` rỗng; `reports/` rỗng; chưa có `.keras`/`.tflite` nào | Chưa làm (do thiếu dataset) |
-| Tests | `pytest -q`: **28 passed** (khảo sát ngày 2026-11-05, 51.92s) | Đã hoàn thành (unit-level) |
-| Smoke test | `python scripts/smoke_test_model.py` → `SMOKE TEST PASSED`, output `(2,3)` softmax | Đã hoàn thành (random tensor) |
-| Fail-safe khi thiếu đầu vào | `check_dataset.py` báo Dataset trống exit 0; `train` dừng an toàn SystemExit 2; `evaluate`/`export_tflite` báo rõ thiếu manifest/model | Đã hoàn thành |
-| Bug chia tập nhỏ (P0) | Probe: `n=3/lớp → train 6 val 0 test 3`; `n=5/lớp → train 12 val 3 test 0`; `n=2/lớp → train 3 val 0 test 3` (chỉ OK từ ~7/lớp). Khi val/test rỗng, `build_tf_datasets` crash `ValueError: images contains no shape` | Đang làm (đã biết lỗi, chưa sửa) |
-| Mâu thuẫn tiền xử lý Android (P0) | Code: `model.py` dùng `preprocess_input` ([0,255]→[-1,1]); `predict.py`/`evaluate.py`/`export_tflite.py` giữ uint8 [0,255]. Ngược lại `android_integration.md` mục 2 và `model_metadata.json` mẫu lại mô tả Rescaling 1/255 → [0,1] | Đang làm (mâu thuẫn tài liệu, chưa chốt) |
+| Tests | `pytest -q`: **36 passed** (khảo sát ngày 2026-11-06, 42.7s) | Đã hoàn thành (unit-level) |
+| Smoke test | `python scripts/smoke_test_model.py` → `SMOKE TEST PASSED`, báo `downloaded: True` (đã sửa đường dẫn weights no_top) | Đã hoàn thành (random tensor) |
+| Fail-safe khi thiếu đầu vào | `check_dataset.py` báo Dataset trống exit 0; `train` dừng an toàn SystemExit 2; `evaluate`/`predict` thiếu model → exit 2, thông báo rõ, không traceback (đã sửa) | Đã hoàn thành |
+| Bug chia tập nhỏ (P0) | Đã sửa: largest-remainder + đảm bảo ≥1 group/split khi đủ 3 group. Probe: `n=3,5,7,20` → cả 3 tập không rỗng; `n=2` → warning rõ. `build_tf_datasets` chống split rỗng (không crash) | Đã hoàn thành |
+| Mâu thuẫn tiền xử lý Android (P0) | Đã đồng bộ: `android_integration.md` mục 2 + snippet Kotlin + `model_metadata.json` đều dùng `[0,255]→preprocess_input[-1,1]`, không còn `Rescaling(1/255)` như chuẩn | Đã hoàn thành |
 | Android app | Không có `*.kt`/`*.gradle`, không có `app/` — chỉ có tài liệu + snippet tham khảo trong `models/tflite/android_integration.md` | Chưa làm |
 | ESP32-S3 / phần cứng | Không có `*.ino`/firmware, không có sơ đồ/diagram; chỉ có mô tả giao tiếp JSON trong mục 6 của `android_integration.md` | Chưa làm |
-| Git/version control | `fatal: not a git repository` tại `/workspace/chili-ripeness-ai`; không có remote | Chưa làm |
-| Môi trường | Python 3.12.3, TF 2.17.0 CPU, Keras 3.15.1, NumPy 1.26.4 (`<2.0.0`), pytest 9.2.0; weights ImageNet `mobilenet_v2_..._no_top.h5` (9.4 MB) đã cache ở `~/.keras/models/` nhưng `smoke_test_model.py` kiểm tra sai tên file (`..._tf_kernels.h5`) nên in `downloaded: False` dù weights tồn tại | Đang làm (môi trường OK, script báo sai) |
+| Git/version control | `git init` → nhánh `main`, commit `2402f86` (42 file), `.gitignore` hoàn thiện (dataset, cache, model, artifact, Android build) | Đã hoàn thành |
+| Môi trường | Python 3.12.3, TF 2.17.0 CPU, Keras 3.15.1, NumPy 1.26.4 (`<2.0.0`), pytest 9.2.0; weights ImageNet `mobilenet_v2_..._1.0_224_no_top.h5` (9.4 MB) đã cache; smoke test giờ kiểm tra đúng file | Đã hoàn thành |
 
 ## 1. Mục tiêu và kiến trúc tổng thể
 
@@ -46,11 +46,12 @@
 
 | # | Công việc | Trạng thái | Ưu tiên | Phụ thuộc | Tiêu chí hoàn thành |
 |---|---|---|---|---|---|
-| 0.1 | Sửa `stratified_group_split`: đảm bảo val/test tối thiểu ≥1 ảnh/lớp khi `n ≥ 3` (dùng largest-remainder thay vì `round()`), và báo warning rõ khi dataset quá nhỏ để chia 3 tập | Đang làm | P0 | — | Probe `n=2,3,5` không còn split nào rỗng một cách thầm lặng; test mới cho `n=5` pass; `pytest` vẫn 28 pass |
-| 0.2 | Sửa `build_tf_datasets`/`make_ds`: guard split rỗng (skip + cảnh báo) thay vì crash `images contains no shape`; `prepare_datasets` validate splits trước khi copy | Đang làm | P0 | 0.1 | `build_tf_datasets` với manifest có split rỗng không traceback; `train` dừng với thông điệp rõ thay vì ValueError |
-| 0.3 | Chốt tiền xử lý duy nhất: đọc `model.py` (`preprocess_input` [0,255]→[-1,1]) là chuẩn, sửa `android_integration.md` mục 2 + snippet Kotlin (không chia 255) và đồng bộ `model_metadata.json` mẫu; ghi quyết định vào README | Đang làm | P0 | — | `grep` không còn `Rescaling(1/255)` trong docs; snippet Android khớp `predict.py`; reviewer xác nhận single source of truth |
-| 0.4 | Sửa `smoke_test_model.py`: sửa đường dẫn weights `..._tf_kernels.h5` → `..._1.0_224_no_top.h5` (đúng file thực tế trong cache) và assert file tồn tại | Chưa làm | P1 | — | Smoke in `downloaded: True`; không còn báo False dù weights có sẵn |
-| 0.5 | Cải thiện fail-safe `evaluate.py`/`predict.py`: kiểm tra model file tồn tại trước `load_model` (hiện chỉ `predict` traceback `ValueError: File not found`) | Chưa làm | P1 | — | Cả hai module in hướng dẫn rõ + exit code 2 khi thiếu model, không traceback |
+| 0.1 | Sửa `stratified_group_split`: đảm bảo val/test tối thiểu ≥1 ảnh/lớp khi `n ≥ 3` (dùng largest-remainder thay vì `round()`), và báo warning rõ khi dataset quá nhỏ để chia 3 tập | Đã hoàn thành | P0 | — | Probe `n=2,3,5,7,20` không còn split rỗng khi có thể chia; `n=2` → warning rõ; test mới pass; `pytest` 36 pass |
+| 0.2 | Sửa `build_tf_datasets`/`make_ds`: guard split rỗng (skip + cảnh báo) thay vì crash `images contains no shape`; fix `decode_image` mất static shape trong graph mode (`_decode_image_safe`) | Đã hoàn thành | P0 | 0.1 | `build_tf_datasets` với manifest có split rỗng không traceback; load ảnh thật hoạt động |
+| 0.3 | Chốt tiền xử lý duy nhất: đọc `model.py` (`preprocess_input` [0,255]→[-1,1]) là chuẩn, sửa `android_integration.md` mục 2 + snippet Kotlin (không chia 255) và đồng bộ `model_metadata.json` mẫu; ghi quyết định vào README | Đã hoàn thành | P0 | — | `grep` không còn `Rescaling(1/255)` như chuẩn trong docs; snippet Android khớp `predict.py` |
+| 0.4 | Sửa `smoke_test_model.py`: sửa đường dẫn weights `..._tf_kernels.h5` → `..._1.0_224_no_top.h5` (đúng file thực tế trong cache) và assert file tồn tại | Đã hoàn thành | P1 | — | Smoke in `downloaded: True`; không còn báo False dù weights có sẵn |
+| 0.5 | Cải thiện fail-safe `evaluate.py`/`predict.py`: kiểm tra model file tồn tại trước `load_model`; CLI exit code 2 khi thiếu model, không traceback | Đã hoàn thành | P1 | — | Cả hai module in hướng dẫn rõ + exit code 2 khi thiếu model, không traceback |
+| 0.6 | Khởi tạo Git (`git init` → main, commit hiện trạng), hoàn thiện `.gitignore` (dataset, cache, model, artifact, Android build, OS) | Đã hoàn thành | P2 | — | `git log` có commit; `git status` sạch; `.gitignore` loại trừ đúng |
 
 ### GĐ 1 — Dữ liệu (thu thập, gán nhãn, xử lý)
 
@@ -123,10 +124,10 @@
 
 ## 4. Thứ tự triển khai đề xuất + bước tiếp theo
 
-1. **Tuần 1 (không cần đầu vào ngoài):** GĐ 0 (0.1–0.5) → `pytest` + probe split nhỏ lại → chốt preprocessing → git init + commit hiện trạng.
+1. **Tuần 1 (đã hoàn thành):** GĐ 0 (0.1–0.6) → `pytest` 36 pass + probe split nhỏ → chốt preprocessing → git init + commit hiện trạng (`2402f86`).
 2. **Tuần 2:** Chờ Q1/Q2 → thu thập ảnh (1.2) + `groups.csv` (1.3) → `check_dataset.py --prepare` (1.4).
 3. **Tuần 3:** Huấn luyện (2.1) → đánh giá (2.2) → predict end-to-end (2.3) → export TFLite (3.1).
 4. **Tuần 4:** Android app (3.3) → đo trên thiết bị (3.4) → chốt protocol (4.1) → chờ Q3/Q5 để đi GĐ 5–6.
 5. **Tuần 5+:** Firmware + tích hợp (6.1–6.2) → test/tài liệu/demo (GĐ 7).
 
-**Việc quan trọng nhất tiếp theo (không phụ thuộc người dùng):** sửa GĐ 0.1–0.3 (split nhỏ + crash + mâu thuẫn preprocessing) và git init. Mọi việc khác đều bị chặn bởi dataset thật và các quyết định ở §5.
+**Việc quan trọng nhất tiếp theo:** chờ người dùng xác nhận Q1/Q2 rồi thu thập ảnh thật (1.2) → `check_dataset.py --prepare` (1.4) → huấn luyện (2.1) → đánh giá (2.2) → export TFLite (3.1). GĐ 0 (fix P0/P1/P2 + git) đã hoàn thành. Mọi việc còn lại đều bị chặn bởi dataset thật và các quyết định ở §5.
