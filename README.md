@@ -1,6 +1,7 @@
 # chili-ripeness-ai — Phân loại độ chín ớt 3 lớp bằng MobileNetV2
 
-Phân loại quả ớt thành `unripe` (chưa chín) / `medium_ripe` (chín vừa) / `ripe` (đã chín) bằng **MobileNetV2 pretrained ImageNet + Transfer Learning**, đầu vào RGB 224×224, đầu ra Softmax 3 lớp. Mục tiêu cuối: chạy trên Android bằng TensorFlow Lite/MediaPipe. Phần 1 này là nền tảng huấn luyện trên máy tính.
+Phân loại quả ớt thành `unripe` (chưa chín) / `medium_ripe` (chín vừa) / `ripe` (đã chín) bằng **MobileNetV2 pretrained ImageNet + Transfer Learning**, đầu vào RGB 224×224, đầu ra Softmax 3 lớp. Mục tiêu cuối: chạy trên Android bằng TensorFlow Lite/MediaPipe. Chủ đạo sử dụng qua ESP32 làm transfer.
+Progress: Chưa Hoàn Thành - 25%.
 
 ## 1. Môi trường đã kiểm chứng (container `ai-workspace`)
 
@@ -15,7 +16,7 @@ Phân loại quả ớt thành `unripe` (chưa chín) / `medium_ripe` (chín v�
 | Volume | Host `<HOST_REPO>/podman-workspace` ↔ Container `/workspace` (bind mount, giữ lại sau restart) |
 | Dự án | `/workspace/chili-ripeness-ai` (trong volume) |
 
-> **Lưu ý tương thích:** TF 2.17 + Python 3.12 là combo đã kiểm chứng. TensorFlow 2.17 yêu cầu `numpy<2.0.0`, `protobuf<5` — đã khóa trong `requirements.txt`. Không dùng Python 3.10 vì container chỉ có Python 3.12. Không có GPU nên đang dùng CPU; pipeline tự co lại theo phần cứng (không giả lập GPU).
+> **Lưu ý tương thích:** TF 2.17 + Python 3.12 đã kiểm chứng. TensorFlow 2.17 yêu cầu `numpy<2.0.0`, `protobuf<5` — đã khóa trong `requirements.txt`. Only for Python 3.12. Sử dụng CPU; pipeline tự co lại theo phần cứng (không giả lập GPU).
 
 ## 2. Cấu trúc dự án
 
