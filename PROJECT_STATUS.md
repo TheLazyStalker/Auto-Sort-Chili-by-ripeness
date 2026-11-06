@@ -181,7 +181,11 @@ dataset/raw/{unripe,medium_ripe,ripe}/  →  scan_raw_dataset (Pillow + md5)
 
 **Đã hoàn thành trong TASK (điều chỉnh kiến trúc):** bỏ hướng Android app; đề xuất kiến trúc CLI Termux (`python-tflite-runtime`); kiểm tra GPU (container CPU-only, host GTX 1650 chưa pass); cập nhật `TERMUX_DEPLOYMENT.md`, `PROJECT_ROADMAP.md`, `PROJECT_STATUS.md`, `README.md`, đánh dấu deprecated `android_integration.md`.
 
-**Đã hoàn thành trong TASK (điều chỉnh kiến trúc):** bỏ hướng Android app; đề xuất kiến trúc CLI Termux (`python-tflite-runtime`); kiểm tra GPU (container CPU-only, host GTX 1650 chưa pass); cập nhật `TERMUX_DEPLOYMENT.md`, `PROJECT_ROADMAP.md`, `PROJECT_STATUS.md`, `README.md`, đánh dấu deprecated `android_integration.md`.
+**Đã hoàn thành trong TASK 2 (Dataset preparation, 2026-11-06):**
+- Nâng cấp `scripts/check_dataset.py`: `--report` (báo cáo scan JSON), `--groups-template` (sinh `groups.csv` từ ảnh hiện có), `--force-resplit`, cảnh báo lớp thiếu ≥30 ảnh.
+- Thêm `write_scan_report` + `generate_groups_template` trong `src/dataset.py`; template `dataset/groups.example.csv`; cập nhật `DATASET_GUIDE.md` và `config.yaml`.
+- **39 test pass** (thêm 4 test dataset mới). Không tạo dữ liệu giả; dataset vẫn trống (0 ảnh thật) — chờ Task 3.
+- Commit `6d10228` (đã push).
 
 **Quyết định đã được người dùng xác nhận chính thức (2026-11-06):**
 - Kiến trúc: **Termux CLI** (Python + `python-tflite-runtime`, model `.tflite`), KHÔNG Android APK/Kotlin.
@@ -191,8 +195,13 @@ dataset/raw/{unripe,medium_ripe,ripe}/  →  scan_raw_dataset (Pillow + md5)
 - Lộ trình: Task 2 Dataset prep → Task 3 Data collection → Task 4 Training → Task 5 TFLite → Task 6 Termux CLI → Task 7 ESP32-S3.
 
 **Bước tiếp theo:**
-1. **Task 2 — Dataset preparation** (đang bắt đầu): hoàn thiện cấu trúc dataset, manifest, nhóm ảnh theo quả, chia train/validation/test, hướng dẫn thu thập ảnh. Không train, không tạo ảnh giả, không tải ảnh hàng loạt, không triển khai CLI.
-2. Chờ Q1/Q2 → Task 3 thu thập ảnh thật → `--prepare` → train → evaluate → export → CLI Termux.
+1. **Task 3 — Data collection** (chờ người dùng): trả lời Q1/Q2, thu thập ảnh thật vào `dataset/raw/<class>/`, tạo `groups.csv` (dùng `--groups-template`), chạy `check_dataset.py --report` → `--prepare`.
+2. Sau khi có ảnh: tri → evaluate → export → CLI Termux (Task 4→6).
+
+**Rủi ro chính:**
+- Blocking lớn nhất: không có dataset ảnh thật → Task 4+ bị chặn (Task 2 framework đã sẵn sàng).
+- Termux: chưa kiểm chứng `python-tflite-runtime` trên điện thoại thật (cần model thật + thiết bị).
+- GPU: đã chốt CPU; nếu sau này cần GPU, phải mở task tối ưu GPU riêng (cần duyệt).
 
 **Rủi ro chính:**
 - Blocking lớn nhất: không có dataset ảnh thật → Task 4+ bị chặn.

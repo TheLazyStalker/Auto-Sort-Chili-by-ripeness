@@ -149,14 +149,14 @@
 
 > Lộ trình chính thức (2026-11-06): Task 2 → Task 7. Có thể điều chỉnh thứ tự nếu phát sinh phụ thuộc, nhưng phải báo cáo trước khi thay đổi.
 
-1. **Task 2 — Dataset preparation** (đang thực hiện): hoàn thiện cấu trúc dữ liệu, kiểm tra ảnh, manifest, nhóm ảnh theo quả ớt, chia train/validation/test, hướng dẫn thu thập ảnh.
-2. **Task 3 — Data collection:** thu thập ảnh thật, gán nhãn, kiểm tra chất lượng/phân bố.
+1. ✅ **Task 2 — Dataset preparation** (hoàn thành 2026-11-06): cấu trúc dữ liệu, kiểm tra ảnh (lỗi/trùng), báo cáo JSON, template `groups.csv`, manifest, chia train/validation/test, hướng dẫn thu thập. 39 test pass.
+2. **Task 3 — Data collection** (tiếp theo, chờ người dùng): thu thập ảnh thật, gán nhãn, kiểm tra chất lượng/phân bố dựa trên Q1/Q2.
 3. **Task 4 — Training:** huấn luyện MobileNet, fine-tune, đánh giá.
 4. **Task 5 — TFLite conversion:** chuyển model, kiểm tra preprocessing, đối chiếu TensorFlow ↔ TFLite.
 5. **Task 6 — Termux CLI:** xây dựng CLI Python dùng `python-tflite-runtime`, kiểm thử trên điện thoại thật.
 6. **Task 7 — ESP32-S3 integration:** thiết kế giao tiếp, điều khiển phần cứng, kiểm thử hệ thống hoàn chỉnh.
 
-**Việc quan trọng nhất tiếp theo:** hoàn thành Task 2 (dataset framework + hướng dẫn thu thập), sau đó người dùng thực hiện thu thập ảnh thật (Task 3) dựa trên Q1/Q2.
+**Việc quan trọng nhất tiếp theo:** người dùng thực hiện thu thập ảnh thật (Task 3) dựa trên Q1/Q2 — framework dataset (Task 2) đã sẵn sàng. Khi có ảnh: `check_dataset.py` → `--report` → `--prepare`.
 
 ## 5. Môi trường train — GPU vs CPU (đã kiểm tra 2026-11-06)
 
