@@ -38,11 +38,13 @@ chili-ripeness-ai/
 │   ├── export_tflite.py # Xuất SavedModel + .tflite cho Android
 │   └── utils.py         # Class weights, md5 trùng ảnh, vẽ đường cong
 ├── scripts/check_dataset.py     # Kiểm tra/thống kê dataset
+├── scripts/audit_dataset.py     # Audit sâu: SHA256, dHash, màu, độ nét, manifest
+├── scripts/prepare_dataset.py   # Chia 70/15/15 + xác minh rò rỉ
 ├── scripts/smoke_test_model.py  # Khởi tạo model với tensor ngẫu nhiên
 ├── tests/                        # Unit tests (không cần ảnh thật)
 ├── config.yaml                   # Mọi tham số huấn luyện
 ├── requirements.txt
-├── README.md  DATASET_GUIDE.md  .gitignore
+├── README.md  DATASET_GUIDE.md  DATASET_AUDIT.md  .gitignore
 ```
 
 ## 3. Cài đặt
@@ -63,7 +65,13 @@ python -c "import tensorflow as tf; print(tf.__version__, tf.config.list_physica
 ```bash
 # Kiểm tra dataset (khi chưa có ảnh sẽ báo rõ ràng và dừng an toàn)
 python scripts/check_dataset.py
-python scripts/check_dataset.py --prepare          # tạo manifest + chia tập & copy
+
+# Audit sâu + manifest + contact sheet nội bộ
+python scripts/audit_dataset.py --contact --audit-md reports/metrics/dataset_audit.md
+
+# Chia tập 70/15/15 + xác minh rò rỉ (file trùng, group, burst)
+python scripts/prepare_dataset.py
+python scripts/prepare_dataset.py --force-resplit   # chia lại khi cần
 
 # Smoke test model (tensor ngẫu nhiên, chưa cần dataset)
 python scripts/smoke_test_model.py
@@ -92,6 +100,6 @@ python -m src.export_tflite
 - **Augmentation nhẹ, không đổi màu mạnh:** flip ngang, xoay ±18°, zoom/translate nhẹ, brightness/contrast ±5%; **không** đổi hue/saturation (màu là đặc trưng chính của độ chín).
 - **Dataset:** hỗ trợ JPG/JPEG/PNG, kiểm tra ảnh lỗi/trùng (md5), chia 70/15/15 stratified theo seed=42, hỗ trợ group ID qua `dataset/groups.csv` (`filename,group_id`) để ảnh cùng 1 quả ớt không lọt nhiều tập; manifest `split_manifest.json` giúp **không chia lại** khi không cần; **không xóa ảnh gốc**.
 
-## 6. Trạng thái phần 1
+## 6. Trạng thái hiện tại
 
-Hoàn thành: môi trường, cấu trúc dự án, toàn bộ mã nguồn, tests + pytest, tài liệu, smoke test model. Đang chờ: **ảnh thật** (đặt vào `dataset/raw/<class>/`) rồi chạy `--prepare` → huấn luyện → đánh giá → xuất TFLite. Xem `DATASET_GUIDE.md` để thu thập & đặt nhãn.
+Hoàn thành: môi trường, cấu trúc dự án, toàn bộ mã nguồn, 44 unit test, tài liệu, smoke test model, **audit + chuẩn bị dataset trên 473 ảnh thật** (197/142/134). Xem `DATASET_AUDIT.md` để biết số liệu và các vấn đề còn tồn tại (dữ liệu chưa đủ quả độc lập/đa dạng; split hiện tại có rò rỉ burst). Cần thu thập bổ sung **nhiều quả độc lập + `group_id`** trước khi tin metric huấn luyện. Xem `DATASET_GUIDE.md` để thu thập & đặt nhãn.

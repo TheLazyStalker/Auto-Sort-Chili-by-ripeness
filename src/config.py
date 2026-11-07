@@ -26,7 +26,7 @@ def load_config(path: str = DEFAULT_CONFIG_PATH) -> dict:
     # Chuẩn hóa các đường dẫn thành tuyệt đối
     for key in ("dataset_raw", "dataset_train", "dataset_validation", "dataset_test",
                 "checkpoints", "saved_model", "tflite", "reports_figures",
-                "reports_metrics", "split_manifest"):
+                "reports_metrics", "split_manifest", "groups_file"):
         p = cfg.get("paths", {}).get(key)
         if p:
             cfg["paths"][key] = os.path.join(PROJECT_ROOT, p)

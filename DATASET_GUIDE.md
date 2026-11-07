@@ -31,10 +31,18 @@ Không có ảnh thật trong `dataset/raw/<class>/` khi `--prepare` được ki
 ## 3. Chọn giống & môi trường chụp
 
 - Ưu tiên 1 giống chiếm đa số; nếu nhiều giống, ghi lại giống của mỗi ảnh trong `groups.csv` (hoặc metadata riêng).
-- Chụp gần, quả ớt chiếm phần lớn khung hình; nền đơn giản và nhất quán (tránh nền tô màu tương tự vỏ để không rối model).
-- Ánh sáng tự nhiên đồng đều (ban ngày, tránh nắng gắt), tránh flash, tránh họng chiếu bóng làm đổi màu.
-- Điện thoại ngang hàng quả ớt, khoảng cách ổn định; ưu tiên độ phân giải ≥ 1080p, format JPG.
-- **Số lượng khuyến nghị:** tối thiểu **~30 ảnh/lớp** để chia đủ 3 tập có ý nghĩa (train/val/test) và cho model học được sự biến thiên. Dataset càng nhiều (đặc biệt giúp phân biệt `medium_ripe` vs `ripe`) càng tốt.
+- **Khung hình:** một quả/khung; cho quả chiếm **≥25–40% diện tích ảnh** (dataset hiện tại chỉ ~3,5% — quá xa).
+- **Khoảng cách:** cố định giữa các lần chụp; không dùng zoom số.
+- **Nền:** đơn giản, matte, trung tính, không cùng màu với vỏ; ghi lại loại nền. Tránh để nền đồng nhất
+  tuyệt đối cho toàn bộ dataset (model dễ học nền thay vì quả).
+- **Ánh sáng:** khuếch tán, không flash trực tiếp, tránh điểm chói trên vỏ; **khóa cân bằng trắng (WB)**
+  để màu không trôi giữa các phiên.
+- **Góc chụp:** điện thoại ngang hàng quả ớt; xoay quả để có nhiều góc nhưng **giữ cùng giai đoạn chín**
+  trong một lần chụp.
+- **Định dạng:** JPG chất lượng cao, độ phân giải ≥1080p; **giữ EXIF gốc** (không crop/resize trước khi lưu raw).
+- **Số lượng khuyến nghị:** tối thiểu **≥50 quả độc lập/lớp** (tốt hơn 100+), mỗi quả 3–6 ảnh.
+  Tổng mục tiêu **≥300–500 quả độc lập** — quan trọng hơn tổng số ảnh.
+  Nhiều ảnh của cùng một quả **không** thay thế được nhiều quả khác nhau.
 
 ## 4. Thu thập theo nhóm (quan trọng nhất)
 
@@ -49,29 +57,48 @@ Không có ảnh thật trong `dataset/raw/<class>/` khi `--prepare` được ki
   Xem `dataset/groups.example.csv` để biết template đầy đủ.
 
 - Nếu đặt `groups_file` trong `config.yaml`: `paths.groups_file: dataset/groups.csv`. Dataset loader sẽ chia theo **nhóm** để ảnh cùng 1 quả **không bao giờ** lọt sang nhiều tập — nếu không, model "nhớ mặt" quả ớt và metric trên tập test sẽ ảo (rò rỉ dữ liệu).
+- `groups.csv` có thể có thêm cột `verified` (`yes`/`no`). Nếu `group_id` để trống và `verified=no`, nghĩa là **chưa xác minh** ảnh nào cùng một quả; khi đó split coi mỗi ảnh là mẫu độc lập (có cảnh báo rò rỉ burst).
+- **Không suy đoán group từ timestamp** rồi coi là sự thật. Chỉ dùng cụm burst như **phương án thử nghiệm** (`--burst-groups`), ghi rõ là heuristic chưa xác minh.
 
 ## 5. Đặt nhãn nhất quán
 
 - Mỗi quả ớt chỉ thuộc **một nhãn** duy nhất; nếu không chắc chắn, bỏ qua quả đó hoặc hỏi người thứ hai xác minh.
-- Phân biệt rõ `medium_ripe` và `ripe`: khi vỏ đã đồng đều màu chín (>90% diện tích) thì là `ripe`; còn xen vệt xanh rõ rệt là `medium_ripe`. (Ngưỡng chính xác sẽ được chốt sau khi xác định giống — xem Q1/Q2.)
+- **Không dùng một ngưỡng diện tích màu cố định** (ví dụ ">90% màu chín = ripe"). Dữ liệu ảnh thật
+  cho thấy 3 lớp tách theo **thứ tự chuyển màu**, không theo một tỷ lệ % cố định:
+  - `unripe`: vỏ **xanh lá chiếm ưu thế**, gần như không có mảng đỏ/cam rõ rệt.
+  - `medium_ripe`: **chuyển tiếp** — vỏ có cả mảng xanh và cam/đỏ, chưa màu nào áp đảo; thường còn xanh ở cuống/đầu quả.
+  - `ripe`: **đỏ chiếm ưu thế** trên thân quả; xanh còn lại chủ yếu ở cuống.
+- Ảnh nằm đúng ranh giới (vàng-lục, cam-đỏ) → đánh dấu **"cần duyệt"**, không tự gán nhãn.
+- Số liệu phân bố màu thực tế, danh sách ảnh nghi vấn và tiêu chí đề xuất chi tiết: xem `DATASET_AUDIT.md` (§9–§11).
+- Ngưỡng chính thức chỉ nên chốt sau khi có **nhiều quả độc lập**, gán nhãn bởi 2 người, rồi kiểm chứng
+  trên quả chưa từng thấy — không lấy ngưỡng từ dataset hiện tại (phụ thuộc burst).
 - Kiểm tra lại ngẫu nhiên 10% ảnh sau khi chia tập; ảnh trùng nội dung sẽ được báo trong `reports`/script.
 
 ## 6. Quy trình đưa vào dự án
 
-1. Đặt ảnh vào `dataset/raw/unripe/`, `medium_ripe/`, `ripe/` (file `.jpg/.jpeg/.png`).
-2. (Tùy chọn) Tạo `dataset/groups.csv` và trỏ `paths.groups_file` trong `config.yaml`.
-3. Chạy `python scripts/check_dataset.py` → kiểm tra số lượng, ảnh lỗi, trùng lặp, và cảnh báo lớp thiếu ảnh.
-4. (Tùy chọn) Chạy `python scripts/check_dataset.py --report` → ghi báo cáo scan ra `reports/metrics/dataset_scan.json`.
-5. Chạy `python scripts/check_dataset.py --prepare` → tạo `dataset/split_manifest.json` và copy vào `train/validation/test` (70/15/15, stratified, seed 42). Ảnh gốc **không bị xóa**.
-6. Huấn luyện: `python -m src.train`; đánh giá: `python -m src.evaluate --split test`.
+1. Đặt ảnh vào `dataset/raw/unripe/`, `medium_ripe/` (hoặc `medium-ripe/`), `ripe/` (file `.jpg/.jpeg/.png`).
+2. (Bắt buộc khi có nhiều ảnh/quả) Tạo `dataset/groups.csv` và điền `group_id` cho từng quả; `paths.groups_file` đã trỏ sẵn file này.
+3. Chạy `python scripts/check_dataset.py` → kiểm tra nhanh số lượng, ảnh lỗi, trùng lặp.
+4. Chạy `python scripts/audit_dataset.py --contact --audit-md reports/metrics/dataset_audit.md` → audit chuyên sâu + manifest + contact sheet.
+5. Chạy `python scripts/prepare_dataset.py` → tạo `dataset/split_manifest.json`, copy vào `train/validation/test` (70/15/15, stratified, seed 42) và **in báo cáo xác minh rò rỉ**. Ảnh gốc **không bị xóa**.
+6. Đọc kỹ cảnh báo: nếu có cặp burst bị tách tập hoặc lớp/tập rỗng → **bổ sung dữ liệu/gán group** trước khi tin metric.
+7. Huấn luyện: `python -m src.train`; đánh giá: `python -m src.evaluate --split test`.
 
-> Không tự chia lại nếu không cần: script sẽ dùng manifest sẵn có. Chỉ thêm `--force-resplit` khi muốn chia lại từ đầu (ví dụ sau khi bổ sung ảnh mới vào `raw/`).
+> Không tự chia lại nếu không cần: script sẽ dùng manifest sẵn có. Chỉ thêm `--force-resplit` khi muốn chia lại từ đầu (ví dụ sau khi bổ sung ảnh mới vào `raw/` hoặc sau khi điền `groups.csv`).
 
 ## 7. Các script hỗ trợ
 
 | Lệnh | Chức năng |
 |---|---|
-| `python scripts/check_dataset.py` | Kiểm tra dataset (đếm, lỗi, trùng, cảnh báo ít ảnh) |
-| `python scripts/check_dataset.py --prepare` | Tạo manifest + chia tập + copy vào train/val/test |
-| `python scripts/check_dataset.py --prepare --force-resplit` | Chia lại từ đầu, bỏ qua manifest cũ |
+| `python scripts/check_dataset.py` | Kiểm tra nhanh dataset (đếm, lỗi, trùng md5, cảnh báo ít ảnh) |
+| `python scripts/audit_dataset.py --contact --audit-md reports/metrics/dataset_audit.md` | Audit chuyên sâu: SHA256, dHash, màu HSV trên vùng quả, độ nét, timestamp; ghi manifest CSV/JSON + contact sheet |
+| `python scripts/prepare_dataset.py` | Tạo manifest + chia 70/15/15 + **xác minh rò rỉ** (file trùng, group, burst) |
+| `python scripts/prepare_dataset.py --force-resplit` | Chia lại từ đầu, bỏ qua manifest cũ |
+| `python scripts/prepare_dataset.py --verify-only` | Chỉ xác minh manifest hiện có |
+| `python scripts/prepare_dataset.py --burst-groups 10` | Split **thử nghiệm** theo cụm burst (heuristic, chưa xác minh) — ghi manifest riêng, không thay manifest chính |
+| `python scripts/check_dataset.py --prepare` | (tương thích) Tạo manifest + chia tập + copy vào train/val/test |
 | `python scripts/check_dataset.py --report` | Ghi báo cáo scan ra `reports/metrics/dataset_scan.json` |
+| `python scripts/check_dataset.py --groups-template` | Sinh template `groups.csv` (group_id trống) |
+
+> Ghi chú thư mục: `dataset/raw/medium-ripe/` (nếu có) được **ánh xạ tự động** sang lớp chuẩn
+> `medium_ripe`; **không đổi tên thư mục raw**. Xem `CLASS_DIR_ALIASES` trong `src/dataset.py`.

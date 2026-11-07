@@ -133,6 +133,16 @@ def test_load_groups_file(tmp_path):
     assert load_groups_file(str(csv_path)) == {"img1.jpg": "pepper_1", "img2.jpg": "pepper_2"}
 
 
+def test_load_groups_file_skips_comments(tmp_path):
+    """Template có dòng '#' ở đầu vẫn phải đọc đúng (không âm thầm bỏ group)."""
+    csv_path = tmp_path / "groups.csv"
+    with open(csv_path, "w") as f:
+        f.write("# chú thích\n# chú thích 2\n\nfilename,group_id,verified\n"
+                "img1.jpg,pepper_1,yes\n"
+                "img2.jpg,,no\n")
+    assert load_groups_file(str(csv_path)) == {"img1.jpg": "pepper_1"}
+
+
 def test_compute_class_weight_balanced():
     w = compute_class_weight(np.array([0, 0, 0, 1, 2]), 3)
     assert w[0] < w[1] and w[0] < w[2]
@@ -251,4 +261,82 @@ def test_generate_groups_template(tmp_path):
     with open(out) as f:
         data = f.read()
     assert "u1.jpg," in data
+
+
+def test_medium_ripe_hyphen_dir_maps_to_standard_label(tmp_path):
+    """Thư mục raw `medium-ripe` phải được đọc thành lớp chuẩn `medium_ripe`."""
+    from src.dataset import resolve_class_dir
+
+    raw = tmp_path / "raw"
+    _make_image(str(raw / "medium-ripe" / "m1.jpg"))
+    _make_image(str(raw / "unripe" / "u1.jpg"))
+    _make_image(str(raw / "ripe" / "r1.jpg"))
+
+    resolved = resolve_class_dir(str(raw), "medium_ripe")
+    assert resolved is not None and resolved.endswith("medium-ripe")
+
+    summary = scan_raw_dataset(str(raw), ["unripe", "medium_ripe", "ripe"])
+    assert summary.counts == {"unripe": 1, "medium_ripe": 1, "ripe": 1}
+    # Nhãn chuẩn vẫn là medium_ripe, không phải medium-ripe
+    assert "medium_ripe" in summary.files
+    assert "medium-ripe" not in summary.files
+
+
+def test_verify_split_detects_overlap_and_group_leak():
+    from src.dataset import verify_split
+
+    classes = ["unripe", "medium_ripe", "ripe"]
+    splits = {
+        "train": [("/d/a.jpg", 0), ("/d/b.jpg", 0)],
+        "validation": [("/d/a.jpg", 0)],  # trùng với train
+        "test": [("/d/c.jpg", 2)],
+    }
+    groups = {"a.jpg": "pepper_1", "b.jpg": "pepper_1"}  # cùng group ở 2 tập
+    v = verify_split(splits, classes, groups=groups)
+    assert "/d/a.jpg" in v["overlap_paths"]
+    assert "pepper_1" in v["group_leaks"]
+    assert v["totals"] == {"train": 2, "validation": 1, "test": 1}
+    assert v["per_split_counts"]["train"]["unripe"] == 2
+    # medium_ripe không có ở tập nào → báo tổ hợp rỗng
+    assert "medium_ripe/train" in v["empty_class_split"]
+
+
+def test_find_burst_leaks():
+    from src.dataset import find_burst_leaks
+
+    splits = {
+        "train": [("/d/IMG_20260101_120000.jpg", 0)],
+        "validation": [("/d/IMG_20260101_120003.jpg", 0)],  # cách 3s → burst
+        "test": [("/d/IMG_20260101_121000.jpg", 0)],        # cách 10 phút
+    }
+    leaks = find_burst_leaks(splits, max_gap_s=5)
+    assert len(leaks) == 1
+    assert leaks[0]["gap_s"] == 3
+    assert {leaks[0]["split_a"], leaks[0]["split_b"]} == {"train", "validation"}
+
+
+def test_find_burst_leaks_same_split_not_reported():
+    from src.dataset import find_burst_leaks
+
+    splits = {
+        "train": [("/d/IMG_20260101_120000.jpg", 0),
+                  ("/d/IMG_20260101_120002.jpg", 0)],
+        "validation": [],
+        "test": [],
+    }
+    assert find_burst_leaks(splits, max_gap_s=5) == []
+
+
+def test_build_burst_groups_clusters_by_gap():
+    from src.dataset import build_burst_groups
+
+    cf = {"unripe": [
+        "/d/IMG_20260101_120000.jpg",
+        "/d/IMG_20260101_120003.jpg",   # cùng cụm với 120000
+        "/d/IMG_20260101_120030.jpg",   # cách 27s → cụm mới
+    ]}
+    g = build_burst_groups(cf, max_gap_s=10)
+    assert g["IMG_20260101_120000.jpg"] == g["IMG_20260101_120003.jpg"]
+    assert g["IMG_20260101_120030.jpg"] != g["IMG_20260101_120000.jpg"]
+    assert len(set(g.values())) == 2
 

@@ -1,4 +1,4 @@
-# PROJECT_STATUS — Báo cáo khảo sát toàn diện (lập ngày 2026-11-06, cập nhật sau TASK 1)
+# PROJECT_STATUS — Báo cáo khảo sát toàn diện (lập ngày 2026-11-06, cập nhật sau TASK 1 & TASK 2)
 
 > Báo cáo này được **tự khám phá và xác minh thực tế** — không dựa vào báo cáo cũ.
 > Mọi trạng thái dưới đây đều có bằng chứng từ mã nguồn, lệnh chạy thực tế hoặc tài liệu.
@@ -8,11 +8,11 @@
 
 ## 0. Tóm tắt điều hành
 
-Dự án **ở giai đoạn nền tảng**: khung toàn bộ pipeline AI (dataset → train → evaluate → predict → export TFLite) **đã viết xong và đã kiểm thử ở mức unit** (36 test pass), nhưng **chưa có bất kỳ dữ liệu ảnh thật nào**, do đó **chưa có model đã huấn luyện**, **chưa có .tflite thật**, và **mọi giai đoạn hạ nguồn (CLI Termux, ESP32-S3, phần cứng) đều chưa bắt đầu**.
+Dự án **ở giai đoạn nền tảng + đã có dữ liệu thật bước đầu**: khung toàn bộ pipeline AI (dataset → train → evaluate → predict → export TFLite) **đã viết xong và đã kiểm thử ở mức unit** (44 test pass), và **đã có 473 ảnh thật** (197 unripe / 142 medium_ripe / 134 ripe). Tuy nhiên **chưa có model đã huấn luyện**, **chưa có .tflite thật**, và dữ liệu hiện tại **chưa đủ đa dạng/độc lập** để đánh giá đáng tin (xem `DATASET_AUDIT.md`). Các giai đoạn hạ nguồn (CLI Termux, ESP32-S3, phần cứng) **chưa bắt đầu**.
 
 > **Cập nhật kiến trúc (2026-11-06):** đã **bỏ hướng Android app (APK/Kotlin/Android Studio/MediaPipe)**, thay bằng **CLI/native chạy trong Termux** (LiteRT/TFLite runtime). Xem `models/tflite/termux_deployment.md`. `models/tflite/android_integration.md` **deprecated**.
 
-**Mức độ sẵn sàng của dự án: ~20–25%** (khung AI + môi trường + fix P0/P1/P2 đã hoàn thành; vẫn bị chặn hoàn toàn bởi thiếu dataset ảnh thật).
+**Mức độ sẵn sàng của dự án: ~35–40%** (khung AI + môi trường + fix P0/P1/P2 + audit/chuẩn bị dataset đã xong; dữ liệu thật đã có nhưng chưa đủ để huấn luyện/đánh giá đáng tin).
 
 ---
 
@@ -21,8 +21,8 @@ Dự án **ở giai đoạn nền tảng**: khung toàn bộ pipeline AI (datase
 | Hạng mục | Kết quả chạy thực tế | Kết luận |
 |---|---|---|
 | Container | `podman start ai-workspace` OK; Python 3.12.3, TF 2.17.0 (CPU-only), numpy 1.26.4 | Môi trường hoạt động |
-| Dataset | `python scripts/check_dataset.py` → 0 ảnh ở cả 3 lớp; `find dataset -type f = 0` | **Dataset trống** |
-| Tests | `pytest -q` → **36 passed** (42.7s) | Unit tests pass (28 cũ + 8 mới) |
+| Dataset | `dataset/raw/{unripe,medium_ripe,ripe}/` có **473 ảnh thật** (197/142/134), 1024×1024 JPG; audit 0 lỗi, 0 trùng md5 | **Đã có dữ liệu thật bước đầu** — chưa đủ đa dạng |
+| Tests | `pytest -q` → **44 passed** (Task 2) | Unit tests pass (39 cũ + 5 mới) |
 | Smoke test | `python scripts/smoke_test_model.py` → `SMOKE TEST PASSED`, báo `downloaded: True` (weights no_top tồn tại) | Model dựng được; smoke trỏ đúng file weights |
 | Model đã train | `models/checkpoints/`, `models/saved_model/` rỗng; không có `.keras`/`.tflite`/`.pb` | **Chưa có model huấn luyện** |
 | TFLite | `models/tflite/` chỉ có `labels.txt`, `model_metadata.json`, `android_integration.md` (tài liệu) | **Chưa có .tflite thật** |
@@ -68,7 +68,7 @@ Dự án **ở giai đoạn nền tảng**: khung toàn bộ pipeline AI (datase
 
 | # | Vấn đề | Trạng thái |
 |---|---|---|
-| B1 | **Không có dataset ảnh thật** (0 ảnh) → không thể train/evaluate/export thật | Bị chặn (cần ảnh từ người dùng) |
+| B1 | **Dữ liệu thật chưa đủ độc đáo/độc lập**: 473 ảnh nhưng theo cụm burst chỉ ~15 cụm; `unripe` gần như 1 phiên chụp; nền/ánh sáng/khoảng cách đồng nhất; quả chỉ ~3,5% khung | **Chưa đủ để đánh giá đáng tin** — cần thu thập thêm quả độc lập + `group_id` |
 | B2 | `evaluate.py` vẫn cần manifest — khi thiếu manifest báo exit 2 (đã cải thiện) nhưng chưa có model thật để chạy end-to-end | Chờ dataset |
 | B3 | INT8 TFLite cần ảnh train thật để calibration — tạm bỏ qua khi chưa có dataset | Chờ dataset |
 | B4 | CLI Termux, giao tiếp ESP32-S3, firmware, phần cứng: hoàn toàn chưa làm (hướng Android app đã bỏ) | Chờ quyết định Q1–Q8 + duyệt kiến trúc Termux |
@@ -104,7 +104,7 @@ dataset/raw/{unripe,medium_ripe,ripe}/  →  scan_raw_dataset (Pillow + md5)
 | # | Giai đoạn | Trạng thái | Ghi chú |
 |---|---|---|---|
 | 1 | Nền tảng & cấu trúc | ✅ Hoàn thành (khung) | src/ scripts/ tests/ config.yaml + Git init |
-| 2 | Dataset & gán nhãn | ⛔ Bị chặn | **0 ảnh thật**; guide đã soạn |
+| 2 | Dataset & gán nhãn | 🟡 Có dữ liệu thật, chưa đủ chất lượng | **473 ảnh** (197/142/134); audit 0 lỗi/0 trùng; nhưng thiếu quả độc lập + đa dạng — xem `DATASET_AUDIT.md` |
 | 3 | AI build/train/tối ưu | 🔵 Chưa làm | Chờ dataset; đã sửa P0 split/decode |
 | 4 | Đánh giá mô hình | 🔵 Chưa làm | Cần model đã train |
 | 5 | Xuất & kiểm thử TFLite | 🔵 Chưa có model thật | Code + unit test sẵn sàng; không có .tflite thật |
@@ -181,11 +181,24 @@ dataset/raw/{unripe,medium_ripe,ripe}/  →  scan_raw_dataset (Pillow + md5)
 
 **Đã hoàn thành trong TASK (điều chỉnh kiến trúc):** bỏ hướng Android app; đề xuất kiến trúc CLI Termux (`python-tflite-runtime`); kiểm tra GPU (container CPU-only, host GTX 1650 chưa pass); cập nhật `TERMUX_DEPLOYMENT.md`, `PROJECT_ROADMAP.md`, `PROJECT_STATUS.md`, `README.md`, đánh dấu deprecated `android_integration.md`.
 
-**Đã hoàn thành trong TASK 2 (Dataset preparation, 2026-11-06):**
+**Đã hoàn thành trong TASK 2 (Dataset preparation framework, 2026-11-06):**
 - Nâng cấp `scripts/check_dataset.py`: `--report` (báo cáo scan JSON), `--groups-template` (sinh `groups.csv` từ ảnh hiện có), `--force-resplit`, cảnh báo lớp thiếu ≥30 ảnh.
 - Thêm `write_scan_report` + `generate_groups_template` trong `src/dataset.py`; template `dataset/groups.example.csv`; cập nhật `DATASET_GUIDE.md` và `config.yaml`.
-- **39 test pass** (thêm 4 test dataset mới). Không tạo dữ liệu giả; dataset vẫn trống (0 ảnh thật) — chờ Task 3.
+- **39 test pass** (thêm 4 test dataset mới). Không tạo dữ liệu giả.
 - Commit `6d10228` (đã push).
+
+**Đã hoàn thành trong TASK 2 (Dataset audit & preparation trên 473 ảnh thật, 2026-11-07):**
+- Tạo `scripts/audit_dataset.py`: SHA256, md5, dHash (toàn khung + crop vùng quả), thống kê HSV chỉ trên vùng quả,
+  diện tích quả/bounding box/độ nét, timestamp/burst, chẩn đoán 1-NN màu, manifest CSV/JSON, contact sheet nội bộ.
+- Tạo `scripts/prepare_dataset.py`: chia 70/15/15, xác minh trùng file/group/burst, `--verify-only`,
+  và `--burst-groups` (split thử nghiệm heuristic, manifest riêng).
+- Bổ sung `src/dataset.py`: alias `medium-ripe` → `medium_ripe`, `verify_split`, `find_burst_leaks`, `build_burst_groups`;
+  `src/config.py` resolve `groups_file`; `config.yaml` trỏ `dataset/groups.csv`.
+- Tạo `DATASET_AUDIT.md` + manifest + `dataset/groups.csv` (group_id trống, `verified=no`) + split thật.
+- **44 test pass** (thêm 5 test mới). Ảnh raw không bị sửa (xác minh lại SHA256: 0 thay đổi).
+- **Kết quả chính:** 473 ảnh (197/142/134), 0 lỗi, 0 trùng md5, 1024×1024, nền 1 biến thể, quả ~3,5% khung,
+  ~15 cụm burst (unripe gần như 1 cụm), split 332/71/70 nhưng **183 cặp burst bị tách tập** → metric sẽ bị lạc quan.
+  **Chưa đủ cơ sở cam kết Accuracy ≥90%.**
 
 **Quyết định đã được người dùng xác nhận chính thức (2026-11-06):**
 - Kiến trúc: **Termux CLI** (Python + `python-tflite-runtime`, model `.tflite`), KHÔNG Android APK/Kotlin.
@@ -193,19 +206,20 @@ dataset/raw/{unripe,medium_ripe,ripe}/  →  scan_raw_dataset (Pillow + md5)
 - GPU inference: **chưa triển khai**, ưu tiên CPU.
 - Kiến trúc AI: **giữ nguyên** MobileNetV2/V3 Small, 224×224×3, 3 lớp Softmax, transfer learning 2 giai đoạn.
 - Lộ trình: Task 2 Dataset prep → Task 3 Data collection → Task 4 Training → Task 5 TFLite → Task 6 Termux CLI → Task 7 ESP32-S3.
+- Group ID (2026-11-07): **không gán group (tách rời)** — mỗi ảnh là mẫu độc lập; `groups.csv` để trống + `verified=no`,
+  kèm cảnh báo rò rỉ burst. Khi có group thật, điền và chạy lại `prepare_dataset.py --force-resplit`.
 
 **Bước tiếp theo:**
-1. **Task 3 — Data collection** (chờ người dùng): trả lời Q1/Q2, thu thập ảnh thật vào `dataset/raw/<class>/`, tạo `groups.csv` (dùng `--groups-template`), chạy `check_dataset.py --report` → `--prepare`.
-2. Sau khi có ảnh: tri → evaluate → export → CLI Termux (Task 4→6).
+1. **Task 3 — Data collection bổ sung** (chờ người dùng): thu thập **nhiều quả độc lập** (≥50/lớp, mục tiêu 100+),
+   chụp gần (quả ≥25–40% khung), đa dạng nền/ánh sáng, ghi `group_id` thật cho từng quả.
+2. Duyệt 5 ảnh nghi vấn nhãn + các ảnh `unripe` ngả vàng trong `DATASET_AUDIT.md` §11 (không tự sửa).
+3. Sau khi có group: `prepare_dataset.py --force-resplit` → kiểm tra 0 burst leak → train → evaluate → export → CLI Termux.
 
 **Rủi ro chính:**
-- Blocking lớn nhất: không có dataset ảnh thật → Task 4+ bị chặn (Task 2 framework đã sẵn sàng).
+- Blocking lớn nhất: dataset hiện tại **thiếu quả độc lập và đa dạng môi trường** → metric không đại diện;
+  cần thu thập thêm trước khi tin kết quả train/evaluate.
 - Termux: chưa kiểm chứng `python-tflite-runtime` trên điện thoại thật (cần model thật + thiết bị).
 - GPU: đã chốt CPU; nếu sau này cần GPU, phải mở task tối ưu GPU riêng (cần duyệt).
-
-**Rủi ro chính:**
-- Blocking lớn nhất: không có dataset ảnh thật → Task 4+ bị chặn.
-- Termux: chưa kiểm chứng `python-tflite-runtime` trên điện thoại thật (cần model thật + thiết bị).
-- GPU: đã chốt CPU; nếu sau này cần GPU, phải mở task tối ưu GPU riêng (cần duyệt).
+- Domain shift: toàn bộ ảnh cùng nền/ánh sáng/khoảng cách; camera OV2640 trên băng tải sẽ khác nhiều.
 
 *Báo cáo này ghi nhận hiện trạng sau TASK điều chỉnh kiến trúc; không đổi model, không tạo dữ liệu giả, không triển khai app/CLI/firmware.*

@@ -24,6 +24,13 @@ from .utils import ensure_dir
 SUPPORTED_EXTENSIONS = (".jpg", ".jpeg", ".png")
 SPLIT_NAMES = ("train", "validation", "test")
 
+# Tên thư mục raw thay thế được chấp nhận cho một lớp chuẩn.
+# Yêu cầu dự án: thư mục `medium-ripe` phải ánh xạ sang nhãn chuẩn `medium_ripe`
+# mà KHÔNG đổi tên thư mục raw. Vì vậy ta chấp nhận cả hai cách viết.
+CLASS_DIR_ALIASES = {
+    "medium_ripe": ("medium_ripe", "medium-ripe"),
+}
+
 
 class DatasetEmptyError(RuntimeError):
     """Dataset trống / thiếu lớp — dừng pipeline một cách an toàn."""
@@ -49,6 +56,20 @@ class DatasetSummary:
 
 def _is_supported_image(path: str) -> bool:
     return path.lower().endswith(SUPPORTED_EXTENSIONS)
+
+
+def resolve_class_dir(raw_root: str, cls: str) -> str | None:
+    """Trả về thư mục raw thực tế cho lớp `cls`, hỗ trợ tên thay thế.
+
+    Ví dụ `medium_ripe` khớp cả `medium_ripe/` và `medium-ripe/`.
+    Trả về None nếu không có thư mục nào tồn tại.
+    """
+    candidates = CLASS_DIR_ALIASES.get(cls, (cls,))
+    for name in candidates:
+        candidate = os.path.join(raw_root, name)
+        if os.path.isdir(candidate):
+            return candidate
+    return None
 
 
 def _validate_image(path: str) -> bool:
@@ -82,9 +103,9 @@ def scan_raw_dataset(raw_root: str, classes: list) -> DatasetSummary:
     hash_to_files: dict[str, list] = {}
 
     for cls in classes:
-        class_dir = os.path.join(raw_root, cls)
+        class_dir = resolve_class_dir(raw_root, cls)
         collected = []
-        if os.path.isdir(class_dir):
+        if class_dir is not None:
             for fname in sorted(os.listdir(class_dir)):
                 fpath = os.path.join(class_dir, fname)
                 if not os.path.isfile(fpath) or not _is_supported_image(fpath):
@@ -129,17 +150,25 @@ def generate_groups_template(raw_root: str, classes: list, out_path: str | None 
 
 
 def load_groups_file(groups_path: str) -> dict:
-    """Đọc CSV filename,group_id → {filename: group_id}. Trả về {} nếu không có file."""
+    """Đọc CSV filename,group_id → {filename: group_id}. Trả về {} nếu không có file.
+
+    Bỏ qua dòng trống và dòng bắt đầu bằng '#' (file template có thể chứa chú thích).
+    """
     groups: dict[str, str] = {}
     if not groups_path or not os.path.isfile(groups_path):
         return groups
     with open(groups_path, "r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            name = (row.get("filename") or "").strip()
-            gid = (row.get("group_id") or "").strip()
-            if name and gid:
-                groups[name] = gid
+        lines = [ln for ln in f if ln.strip() and not ln.lstrip().startswith("#")]
+    if not lines:
+        return groups
+    reader = csv.DictReader(lines)
+    if not reader.fieldnames or "filename" not in reader.fieldnames:
+        return groups
+    for row in reader:
+        name = (row.get("filename") or "").strip()
+        gid = (row.get("group_id") or "").strip()
+        if name and gid:
+            groups[name] = gid
     return groups
 
 
@@ -263,6 +292,132 @@ def load_manifest(manifest_path: str) -> dict | None:
         return None
     with open(manifest_path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def verify_split(splits: dict, classes: list, groups: dict | None = None) -> dict:
+    """Xác minh một kết quả chia tập: trùng lặp, group leakage, tỷ lệ theo lớp.
+
+    Trả về dict tổng hợp (không raise) để script in báo cáo trung thực.
+    """
+    groups = groups or {}
+    split_of: dict[str, set] = {}
+    per_split_counts: dict[str, dict] = {}
+    for name in SPLIT_NAMES:
+        items = splits.get(name, [])
+        counts = {c: 0 for c in classes}
+        for path, label in items:
+            split_of.setdefault(path, set()).add(name)
+            cls = classes[label] if isinstance(label, int) and label < len(classes) else str(label)
+            counts[cls] = counts.get(cls, 0) + 1
+        per_split_counts[name] = counts
+
+    overlap = {p: sorted(s) for p, s in split_of.items() if len(s) > 1}
+
+    group_splits: dict[str, set] = {}
+    for name in SPLIT_NAMES:
+        for path, _label in splits.get(name, []):
+            gid = groups.get(os.path.basename(path))
+            if gid:
+                group_splits.setdefault(gid, set()).add(name)
+    group_leaks = {g: sorted(s) for g, s in group_splits.items() if len(s) > 1}
+
+    total = sum(len(splits.get(n, [])) for n in SPLIT_NAMES)
+    totals = {n: len(splits.get(n, [])) for n in SPLIT_NAMES}
+    ratios = {n: (round(totals[n] / total, 4) if total else 0.0) for n in SPLIT_NAMES}
+
+    missing = [
+        f"{cls}/{name}"
+        for name in SPLIT_NAMES
+        for cls in classes
+        if per_split_counts[name].get(cls, 0) == 0
+    ]
+
+    return {
+        "total": total,
+        "totals": totals,
+        "ratios": ratios,
+        "per_split_counts": per_split_counts,
+        "overlap_paths": overlap,
+        "group_leaks": group_leaks,
+        "empty_class_split": missing,
+        "groups_used": len(group_splits),
+    }
+
+
+def _parse_img_timestamp(filename: str):
+    """Đọc timestamp từ tên IMG_YYYYMMDD_HHMMSS.jpg → datetime | None."""
+    import re
+
+    m = re.match(r"IMG_(\d{8})_(\d{6})", os.path.basename(filename))
+    if not m:
+        return None
+    try:
+        return datetime.datetime.strptime(m.group(1) + m.group(2), "%Y%m%d%H%M%S")
+    except ValueError:
+        return None
+
+
+def build_burst_groups(class_to_files: dict, max_gap_s: float = 10.0,
+                       prefix: str = "burst") -> dict:
+    """Sinh group ID HEURISTIC theo cụm timestamp (chụp burst liên tiếp).
+
+    CẢNH BÁO: đây chỉ là giả định "các ảnh cách nhau <= max_gap_s có thể cùng
+    một quả ớt", KHÔNG phải xác minh. Dùng để thử nghiệm split an toàn hơn,
+    không thay thế việc gán group_id thủ công.
+
+    Trả về {filename: group_id}.
+    """
+    groups: dict[str, str] = {}
+    for cls, paths in class_to_files.items():
+        stamped = []
+        for p in paths:
+            ts = _parse_img_timestamp(p)
+            if ts is not None:
+                stamped.append((ts, p))
+        stamped.sort(key=lambda x: x[0])
+        idx = 0
+        prev = None
+        for ts, p in stamped:
+            if prev is None or (ts - prev).total_seconds() > max_gap_s:
+                idx += 1
+            groups[os.path.basename(p)] = f"{prefix}_{cls}_{idx:03d}"
+            prev = ts
+        for p in paths:
+            name = os.path.basename(p)
+            if name not in groups:
+                groups[name] = f"{prefix}_{cls}_na_{name}"
+    return groups
+
+
+def find_burst_leaks(splits: dict, max_gap_s: float = 5.0) -> list:
+    """Ước lượng rò rỉ do chụp burst: cặp ảnh chụp cách nhau <= max_gap_s
+    nhưng nằm ở hai tập khác nhau (khả năng cao cùng một quả ớt).
+
+    Đây chỉ là ƯỚC LƯỢNG theo timestamp, không khẳng định cùng quả.
+    Trả về list dict {a, b, gap_s, split_a, split_b}.
+    """
+    stamped = []
+    for name in SPLIT_NAMES:
+        for path, _label in splits.get(name, []):
+            ts = _parse_img_timestamp(path)
+            if ts is not None:
+                stamped.append((ts, path, name))
+    stamped.sort(key=lambda x: x[0])
+
+    leaks = []
+    for i in range(1, len(stamped)):
+        prev_ts, prev_path, prev_split = stamped[i - 1]
+        cur_ts, cur_path, cur_split = stamped[i]
+        gap = (cur_ts - prev_ts).total_seconds()
+        if gap <= max_gap_s and prev_split != cur_split:
+            leaks.append({
+                "a": prev_path,
+                "b": cur_path,
+                "gap_s": gap,
+                "split_a": prev_split,
+                "split_b": cur_split,
+            })
+    return leaks
 
 
 def materialize_split(splits: dict, split_dirs: dict, copy: bool = True) -> None:

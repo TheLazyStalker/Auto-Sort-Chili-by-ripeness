@@ -10,10 +10,10 @@
 
 | Hạng mục | Bằng chứng thực tế | Trạng thái |
 |---|---|---|
-| Cấu trúc dự án | `src/` (10 file .py), `scripts/` (2 file), `tests/` (7 file, gồm test_failsafe.py), `config.yaml`, `requirements.txt`, `README.md`, `DATASET_GUIDE.md`, `models/tflite/` (chỉ .md/.txt/.json) | Đã hoàn thành (khung) |
-| Dataset ảnh | `dataset/raw/{unripe,medium_ripe,ripe}/` **rỗng**, `dataset/train|validation|test/` rỗng, không có `split_manifest.json`; `find dataset -type f = 0` | Bị chặn (thiếu ảnh thật) |
-| Model đã huấn luyện | `models/checkpoints/`, `models/saved_model/` rỗng; `reports/` rỗng; chưa có `.keras`/`.tflite` nào | Chưa làm (do thiếu dataset) |
-| Tests | `pytest -q`: **36 passed** (khảo sát ngày 2026-11-06, 42.7s) | Đã hoàn thành (unit-level) |
+| Cấu trúc dự án | `src/` (10 file .py), `scripts/` (4 file: check_dataset, audit_dataset, prepare_dataset, smoke_test_model), `tests/` (7 file), `config.yaml`, `requirements.txt`, `README.md`, `DATASET_GUIDE.md`, `DATASET_AUDIT.md`, `models/tflite/` (chỉ .md/.txt/.json) | Đã hoàn thành (khung) |
+| Dataset ảnh | `dataset/raw/{unripe,medium_ripe,ripe}/` có **473 ảnh thật** (197/142/134), 1024×1024 JPG; audit: 0 lỗi, 0 trùng md5, 1 biến thể nền, quả ~3,5% khung; ~15 cụm burst (unripe ~1 cụm). Chi tiết: `DATASET_AUDIT.md` | 🟡 Có dữ liệu thật bước đầu — chưa đủ đa dạng/độc lập |
+| Model đã huấn luyện | `models/checkpoints/`, `models/saved_model/` rỗng; `reports/` chỉ có artifact audit; chưa có `.keras`/`.tflite` nào | Chưa làm (chưa huấn luyện) |
+| Tests | `pytest -q`: **44 passed** (Task 2, 2026-11-07) | Đã hoàn thành (unit-level) |
 | Smoke test | `python scripts/smoke_test_model.py` → `SMOKE TEST PASSED`, báo `downloaded: True` (đã sửa đường dẫn weights no_top) | Đã hoàn thành (random tensor) |
 | Fail-safe khi thiếu đầu vào | `check_dataset.py` báo Dataset trống exit 0; `train` dừng an toàn SystemExit 2; `evaluate`/`predict` thiếu model → exit 2, thông báo rõ, không traceback (đã sửa) | Đã hoàn thành |
 | Bug chia tập nhỏ (P0) | Đã sửa: largest-remainder + đảm bảo ≥1 group/split khi đủ 3 group. Probe: `n=3,5,7,20` → cả 3 tập không rỗng; `n=2` → warning rõ. `build_tf_datasets` chống split rỗng (không crash) | Đã hoàn thành |
@@ -68,10 +68,10 @@
 
 | # | Công việc | Trạng thái | Ưu tiên | Phụ thuộc | Tiêu chí hoàn thành |
 |---|---|---|---|---|---|
-| 1.1 | Chốt giống ớt, môi trường chụp, tiêu chí nhãn `medium_ripe` vs `ripe` (>90% diện tích màu chín = `ripe`); ghi vào `DATASET_GUIDE.md` | Bị chặn (cần người dùng xác nhận giống + điều kiện chụp) | P0 | §5 Q1–Q2 | Guide có checklist đã duyệt; 2 người kiểm tra nhãn độc lập trên mẫu |
-| 1.2 | Thu thập ảnh thật ≥ 100–200/lớp (mục tiêu khởi điểm; tăng dần theo đường cong học), đặt vào `dataset/raw/<class>/`, chụp gần, nền nhất quán, JPG ≥1080p | Bị chặn (thiếu ảnh) | P0 | 1.1 | `check_dataset.py` báo ≥100/lớp, 0 lỗi decode; không dùng ảnh Internet không rõ bản quyền nếu có yêu cầu |
-| 1.3 | Tạo `dataset/groups.csv` (`filename,group_id`): mỗi quả ớt một group, mọi góc chụp cùng group; trỏ `paths.groups_file` trong `config.yaml` | Chưa làm | P1 | 1.2 | Mỗi ảnh có group; test group-leak pass với dữ liệu thật |
-| 1.4 | Chạy `check_dataset.py --prepare` tạo `split_manifest.json`, kiểm tra trùng md5, thôi chia lại khi không cần (`--force-resplit` chỉ khi cần) | Chưa làm | P1 | 1.2–1.3, 0.1 | Manifest tồn tại, splits tỉ lệ ~70/15/15, ảnh gốc không mất, mô tả kết quả trong `reports/` |
+| 1.1 | Chốt giống ớt, môi trường chụp, tiêu chí nhãn `medium_ripe` vs `ripe`; ghi vào `DATASET_GUIDE.md` | 🟡 Đã đề xuất tiêu chí từ dữ liệu thật (không áp ngưỡng cứng); chờ người dùng duyệt Q1/Q2 | P0 | §5 Q1–Q2 | Guide có checklist đã duyệt; 2 người kiểm tra nhãn độc lập trên mẫu |
+| 1.2 | Thu thập ảnh thật ≥ 100–200/lớp, đặt vào `dataset/raw/<class>/`, chụp gần, nền nhất quán, JPG ≥1080p | 🟡 Đã có 473 ảnh (197/142/134) nhưng **chưa đủ quả độc lập/đa dạng**; cần bổ sung ≥50 quả độc lập/lớp, quả chiếm ≥25–40% khung | P0 | 1.1 | `audit_dataset.py` báo 0 lỗi; đủ cụm quả độc lập; ảnh chụp gần hơn |
+| 1.3 | Tạo `dataset/groups.csv` (`filename,group_id`): mỗi quả ớt một group, mọi góc chụp cùng group; trỏ `paths.groups_file` | 🟡 Đã tạo `groups.csv` (473 dòng) + trỏ config, nhưng `group_id` **trống** (`verified=no`) theo quyết định "tách rời"; cần điền group thật | P1 | 1.2 | Mỗi ảnh có group xác minh; test group-leak pass với dữ liệu thật |
+| 1.4 | Chạy `prepare_dataset.py` tạo `split_manifest.json`, kiểm tra trùng, xác minh rò rỉ | 🟡 Đã chia 332/71/70 (70,2/15,0/14,8%), 0 trùng file, nhưng **183 cặp burst bị tách tập**; split theo burst heuristic không chia được `unripe` (1 group) | P1 | 1.2–1.3, 0.1 | Manifest có; 0 burst leak; 3 tập không rỗng cho mọi lớp |
 
 ### GĐ 2 — AI: xây dựng, huấn luyện, đánh giá, tối ưu
 
@@ -149,14 +149,14 @@
 
 > Lộ trình chính thức (2026-11-06): Task 2 → Task 7. Có thể điều chỉnh thứ tự nếu phát sinh phụ thuộc, nhưng phải báo cáo trước khi thay đổi.
 
-1. ✅ **Task 2 — Dataset preparation** (hoàn thành 2026-11-06): cấu trúc dữ liệu, kiểm tra ảnh (lỗi/trùng), báo cáo JSON, template `groups.csv`, manifest, chia train/validation/test, hướng dẫn thu thập. 39 test pass.
-2. **Task 3 — Data collection** (tiếp theo, chờ người dùng): thu thập ảnh thật, gán nhãn, kiểm tra chất lượng/phân bố dựa trên Q1/Q2.
+1. ✅ **Task 2 — Dataset audit & preparation** (hoàn thành 2026-11-07 trên dữ liệu thật): audit 473 ảnh (0 lỗi, 0 trùng md5, 1024×1024), manifest SHA256/group, `groups.csv` (group_id trống, `verified=no`), split 332/71/70 + xác minh rò rỉ, `DATASET_AUDIT.md`, 44 test pass. **Kết luận: dữ liệu chưa đủ độc lập/đa dạng để tin metric** (183 cặp burst bị tách tập; unripe ~1 cụm).
+2. **Task 3 — Data collection bổ sung** (tiếp theo, chờ người dùng): thu thập **nhiều quả độc lập** (≥50/lớp, mục tiêu 100+), chụp gần (quả ≥25–40% khung), đa dạng nền/ánh sáng, ghi `group_id` thật; duyệt 5 ảnh nghi vấn nhãn.
 3. **Task 4 — Training:** huấn luyện MobileNet, fine-tune, đánh giá.
 4. **Task 5 — TFLite conversion:** chuyển model, kiểm tra preprocessing, đối chiếu TensorFlow ↔ TFLite.
 5. **Task 6 — Termux CLI:** xây dựng CLI Python dùng `python-tflite-runtime`, kiểm thử trên điện thoại thật.
 6. **Task 7 — ESP32-S3 integration:** thiết kế giao tiếp, điều khiển phần cứng, kiểm thử hệ thống hoàn chỉnh.
 
-**Việc quan trọng nhất tiếp theo:** người dùng thực hiện thu thập ảnh thật (Task 3) dựa trên Q1/Q2 — framework dataset (Task 2) đã sẵn sàng. Khi có ảnh: `check_dataset.py` → `--report` → `--prepare`.
+**Việc quan trọng nhất tiếp theo:** người dùng thực hiện **thu thập bổ sung nhiều quả độc lập** (Task 3) và điền `group_id` thật; framework audit/split (Task 2) đã sẵn sàng. Sau khi có group: `prepare_dataset.py --force-resplit` → kiểm tra 0 burst leak → train/evaluate.
 
 ## 5. Môi trường train — GPU vs CPU (đã kiểm tra 2026-11-06)
 

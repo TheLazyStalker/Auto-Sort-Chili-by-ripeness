@@ -3,7 +3,7 @@ dataset/raw/*/*
 dataset/train/**/*
 dataset/validation/**/*
 dataset/test/**/*
-dataset/split_manifest.json
+dataset/split_manifest*.json
 dataset/groups.csv
 !dataset/raw/**/.gitkeep
 !dataset/train/.gitkeep
