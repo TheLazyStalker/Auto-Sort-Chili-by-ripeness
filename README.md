@@ -16,22 +16,12 @@ Progress: ~80% (container) — chờ đo trên điện thoại + integration ESP
 | Keras | 3.15.1 |
 | NumPy | 1.26.4 (khóa `<2.0.0` vì TF 2.17 yêu cầu) |
 | Pillow / PyYAML / scikit-learn / matplotlib / pytest | 13.0.0 / 6.0.3 / 1.5.2 / 3.11.2 / 9.2.0 |
-| Volume | Host `<HOST_REPO>/podman-workspace` ↔ Container `/workspace` (bind mount) |
+| Volume | Host ↔ Container `/workspace` (bind mount) |
 | Dự án | `/workspace/chili-ripeness-ai` (trong volume) |
 
 > **Lưu ý tương thích:** TF 2.17 + Python 3.12 đã kiểm chứng. TensorFlow 2.17 yêu cầu `numpy<2.0.0`, `protobuf<5`. Chỉ dùng CPU.
 
-## 2. Quyết định dữ liệu (đã chốt)
-
-- **Q1=C** — không có mapping ảnh→quả; không suy group từ timestamp/tên file.
-- **Q4=B** — 473 ảnh cũ (trừ 10 ảnh bị loại) chỉ dùng **train**; validation/test mới từ quả vật lý độc lập (Task 3).
-- **Q5** — 10 ảnh nghi vấn giữ trong `dataset/review_exclusions.csv` (status `excluded`), không đưa vào train.
-- **Q6=C** — lưu derivative `crop_v1` riêng (`dataset/derived/crop_v1/`), giữ nguyên raw, cùng quy trình crop khi inference.
-- **Q7** — giao thức thu thập Task 3: `group_id` duy nhất/quả, quả chiếm 25–40% khung, ánh sáng khuếch tán, nền matte, 3–6 ảnh/quả, 30–50+ quả/lớp.
-- Preprocessing invariant: RGB `[0,255]` → MobileNetV3Small `include_preprocessing=True` (Rescaling 1/128, −1 nhúng trong model) → `[-1,1]`. **Không bao giờ thêm `Rescaling(1/255)` ngoài model; không double-scale.**
-- **INT8 đã loại bỏ hoàn toàn** — chỉ Float32 (bản đối chiếu) + Float16 (bản triển khai chính).
-
-## 3. Cấu trúc dự án
+## 2. Cấu trúc dự án
 
 ```text
 chili-ripeness-ai/
@@ -73,7 +63,7 @@ chili-ripeness-ai/
 ├── README.md  DATASET_GUIDE.md  DATASET_AUDIT.md  PROJECT_ROADMAP.md  .gitignore
 ```
 
-## 4. Cài đặt
+## 3. Cài đặt
 
 ```bash
 # 1) Vào container (đã chạy sẵn)
@@ -86,7 +76,7 @@ pip install -r requirements.txt
 python -c "import tensorflow as tf; print(tf.__version__)"
 ```
 
-## 5. Pipeline chính (Task 3–5)
+## 4. Pipeline chính (Task 3–5)
 
 ```bash
 # Xác minh dataset/derivative (SHA256 raw so với baseline)
@@ -111,7 +101,7 @@ python scripts/evaluate_task5.py
 python scripts/benchmark_task5.py --warmup 5 --runs 50
 ```
 
-## 6. Triển khai Termux (Task 6) — `deployment/task6/`
+## 5. Triển khai Termux (Task 6) — `deployment/task6/`
 
 Xem `deployment/task6/README.md` để cài đặt từng bước trên điện thoại. Tóm tắt:
 
@@ -132,7 +122,7 @@ python benchmark.py --model models/chili_float16.tflite --warmup 10 --runs 100
 - Preprocessing khớp pipeline container: RGB [0,255] → 224×224 → float32 tensor; crop_v1 tự động nếu ảnh chưa crop.
 - Kết quả trên thiết bị thật cần gửi lại để tổng hợp benchmark chính thức.
 
-## 7. Kết quả hiện tại (DEVELOPMENT — chưa phải benchmark độc lập)
+## 6. Kết quả hiện tại (DEVELOPMENT — chưa phải benchmark độc lập)
 
 | Hạng mục | Giá trị |
 |---|---|
@@ -147,7 +137,7 @@ python benchmark.py --model models/chili_float16.tflite --warmup 10 --runs 100
 
 > ⚠️ **KHÔNG tuyên bố accuracy thực tế ≥90%** — dev split leaky (chưa biết ảnh cũ thuộc cùng quả hay không); benchmark chính thức cần tập test độc lập + đo trên điện thoại Android (mẫu đã test).
 
-## 8. Các hạn chế / việc tiếp theo
+## 7. Các hạn chế / việc tiếp theo
 
 - Thu thập dữ liệu mới (quả độc lập) + điền `group_id` → tạo validation/test độc lập (Task 3 Phase 2–5).
 - Đo benchmark trên điện thoại thật (Task 6 §D) — đang chờ người dùng.

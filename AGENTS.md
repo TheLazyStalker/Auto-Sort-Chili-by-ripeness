@@ -1,7 +1,7 @@
 # AGENTS.md — chili-ripeness-ai
 
 ## Use the container, not host Python
-- The host repo `<HOST_REPO>/podman-workspace/chili-ripeness-ai` is bind-mounted as `/workspace/chili-ripeness-ai` in the podman container `ai-workspace`.
+- The host repo directory is bind-mounted as `/workspace/chili-ripeness-ai` in the podman container `ai-workspace`.
 - Run project commands inside the container:
   ```bash
   podman start ai-workspace
