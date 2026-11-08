@@ -1,0 +1,5 @@
+# Deployment Task 6 — Termux runtime (ARM64, Android 11)
+# Ưu tiên: tflite-runtime (nhẹ, không cần TensorFlow đầy đủ) + Pillow + numpy
+numpy<2.0.0
+Pillow
+tflite-runtime>=2.14

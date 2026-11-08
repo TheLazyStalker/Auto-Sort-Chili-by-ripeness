@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 
 from src.config import load_config, set_seeds
-from src.model import build_base_model, build_model, compile_model, freeze_backbone
+from src.model import build_base_model, build_model, compile_model, freeze_backbone, normalize_base_name
 
 
 def test_model_output_shape_and_softmax():
@@ -26,10 +26,14 @@ def test_model_architecture_has_gap_dropout_softmax():
     assert last.units == 3 and last.activation == tf.keras.activations.softmax
 
 
-def test_backbone_is_mobilenetv2_imagenet():
+def test_backbone_loads_from_config():
     cfg = load_config()
     base = build_base_model(cfg)
-    assert "mobilenetv2" in base.name.lower()
+    name = normalize_base_name(cfg["model"].get("base", "mobilenetv2"))
+    if name == "mobilenetv3small":
+        assert "mobilenetv3" in base.name.lower()
+    else:
+        assert "mobilenetv2" in base.name.lower()
 
 
 def test_freeze_and_finetune():

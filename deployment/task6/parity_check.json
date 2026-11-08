@@ -1,0 +1,9 @@
+{
+  "n_dev": 92,
+  "deploy_accuracy": 0.9891304347826086,
+  "deploy_vs_container_tflite_agreement": 1.0,
+  "deploy_vs_container_tflite_max_prob_diff": 0.0,
+  "deploy_vs_keras_agreement": 1.0,
+  "deploy_vs_keras_max_prob_diff": 0.014598250389099121,
+  "note": "consistency check only; not independent benchmark"
+}

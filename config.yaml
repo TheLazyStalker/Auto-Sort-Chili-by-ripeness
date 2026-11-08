@@ -22,6 +22,26 @@ paths:
   # (chưa xác minh ảnh nào cùng một quả) → hiện tại mỗi ảnh là một mẫu độc lập.
   # Khi điền group_id thật, split sẽ tự chia theo nhóm.
   groups_file: dataset/groups.csv
+  # Task 3: derivative + metadata (raw luôn giữ nguyên).
+  dataset_derived: dataset/derived
+  split_manifest_task3: dataset/split_manifest_task3.json
+  exclusions_file: dataset/review_exclusions.csv
+  capture_log: dataset/capture_log.csv
+  group_splits: dataset/group_splits.csv
+  label_overrides: dataset/label_overrides.csv
+  artifacts_task4: artifacts/task4
+
+crop:
+  # crop_v1: tách quả khỏi nền, lưu derivative riêng, raw giữ nguyên.
+  # Threshold 30 là điểm khởi đầu trong khoảng 25–40; phải QA trên mẫu trước khi train.
+  version: crop_v1
+  output_size: 224
+  pad_frac: 0.20               # padding mỗi cạnh = 20% max(bbox_w, bbox_h)
+  threshold: 30.0              # khoảng cách Euclid RGB tới màu nền
+  border_frac: 0.05            # dải viền dùng ước lượng nền
+  min_area_frac: 0.005         # mask < 0.5% khung → needs_review
+  max_area_frac: 0.60          # mask > 60% khung → needs_review
+  dilate_px: 2                 # giữ cuống mảnh
 
 data:
   image_size: 224              # đầu vào 224x224x3
@@ -34,23 +54,26 @@ data:
   val_fraction_of_holdout: 0.5        # chia holdout 30% thành val/test 15/15
 
 model:
-  base: mobilenetv2
+  # Task 4: MobileNetV3Small là primary (include_preprocessing=True → preprocessing
+  # nhúng trong model; KHÔNG gọi preprocess_input, KHÔNG Rescaling(1/255) ngoài).
+  base: mobilenetv3small
   weights: imagenet
   include_top: false
   dropout: 0.3
-  fine_tune_layers: 30         # số layer cuối của backbone được fine-tune ở giai đoạn 2
+  fine_tune_layers: 30         # số layer cuối của backbone được fine-tune ở giai đoạn 2 (V2)
+  fine_tune_layers_v3small: 20  # V3Small: 20 layer cuối (trên 157)
 
 training:
   seed: 42
-  stage1_epochs: 10            # freeze backbone, chỉ train head
-  stage2_epochs: 20            # fine-tune các layer cuối
+  stage1_epochs: 30            # freeze backbone, chỉ train head (tối đa ~30)
+  stage2_epochs: 20            # fine-tune các layer cuối (tối đa ~20)
   stage1_lr: 0.001
   stage2_lr: 0.0001
   optimizer: adam
-  loss: categorical_crossentropy
+  loss: sparse_categorical_crossentropy  # label integer; output softmax 3 lớp
   metrics: [accuracy]
-  early_stopping_patience: 5
-  reduce_lr_patience: 3
+  early_stopping_patience: 7
+  reduce_lr_patience: 4
   reduce_lr_factor: 0.5
   reduce_lr_min_lr: 0.000001
   class_weight: balanced       # balanced | null

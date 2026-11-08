@@ -1,0 +1,11 @@
+filename,current_label,reason,status,reviewed,reviewed_label,notes
+IMG_20261107_150901.jpg,unripe,color-nearest medium_ripe; yellow/orange tip,excluded,no,,
+IMG_20261107_150329.jpg,medium_ripe,color-nearest ripe; dark red-brown body,excluded,no,,
+IMG_20261107_150511.jpg,medium_ripe,color-nearest unripe; green body with yellow tip,excluded,no,,
+IMG_20261107_145600.jpg,ripe,color-nearest medium_ripe; long green stem (label may be correct),excluded,no,,
+IMG_20261107_145847.jpg,ripe,color-nearest medium_ripe; orange-red boundary,excluded,no,,
+IMG_20261107_151125.jpg,unripe,yellow/orange bands; strongest unripe/medium boundary,excluded,no,,
+IMG_20261107_150946.jpg,unripe,small object; flagged by the old yellow heuristic,excluded,no,,
+IMG_20261107_151349.jpg,unripe,yellow-green; large bbox,excluded,no,,
+IMG_20261107_151342.jpg,unripe,yellow-green; large bbox,excluded,no,,
+IMG_20261107_150950.jpg,unripe,smallest object; flagged by the old yellow heuristic,excluded,no,

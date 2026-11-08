@@ -5,12 +5,15 @@ dataset/validation/**/*
 dataset/test/**/*
 dataset/split_manifest*.json
 dataset/groups.csv
+dataset/derived/
 !dataset/raw/**/.gitkeep
 !dataset/train/.gitkeep
 !dataset/validation/.gitkeep
 !dataset/test/.gitkeep
 
 # Model & artifact sinh ra khi huấn luyện/export
+artifacts/
+artifacts_task4_train.log
 models/checkpoints/**/*
 models/saved_model/**/*
 reports/figures/**/*
@@ -35,6 +38,9 @@ models/tflite/**/*
 *.pb
 *.savedmodel
 *.onnx
+# Deployment Task 6: models nhỏ cần commit để dùng trên Termux
+!deployment/task6/models/*.tflite
+!deployment/task6/models/*.json
 
 # Python & env
 __pycache__/
@@ -66,3 +72,4 @@ Thumbs.db
 *.tmp
 *.swp
 nohup.out
+zip/deployment/*.zip
