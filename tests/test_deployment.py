@@ -110,3 +110,77 @@ def test_benchmark_runs(tmp_path, capsys):
         b = json.load(f)
     assert b["n_runs"] == 5
     assert b["inference_ms_mean"] > 0
+
+
+# ---------------- fast_crop (Task 6 perf) ----------------
+
+def _scene(size, pepper_box):
+    import numpy as np
+    arr = np.full((size[1], size[0], 3), 220, dtype=np.uint8)
+    x0, y0, x1, y1 = pepper_box
+    arr[y0:y1, x0:x1] = (40, 200, 40)
+    return arr
+
+
+def test_fast_crop_output_shape_and_bbox():
+    from fast_crop import crop_v1, foreground_bbox
+    arr = _scene((1024, 1024), (400, 400, 700, 700))
+    out = crop_v1(arr)
+    assert out.shape == (224, 224, 3)
+    assert out.dtype == np.uint8
+    bbox = foreground_bbox(arr)
+    assert bbox is not None
+    x0, y0, x1, y1, _ = bbox
+    # bbox xấp xỉ vùng quả (dung sai do downscale)
+    assert abs(x0 - 400) <= 40 and abs(y0 - 400) <= 40
+    assert abs(x1 - 700) <= 40 and abs(y1 - 700) <= 40
+
+
+def test_fast_crop_empty_mask_raises():
+    import numpy as np
+    from fast_crop import crop_v1
+    flat = np.full((512, 512, 3), 200, dtype=np.uint8)
+    with pytest.raises(ValueError, match="empty_mask"):
+        crop_v1(flat)
+
+
+def test_fast_crop_preserves_class_vs_pil_crop():
+    """fast_crop phải cho cùng class dự đoán như crop gốc (src/crop.py)."""
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), "src"))
+    from crop import crop_v1 as slow_crop
+    from fast_crop import crop_v1 as fast_crop
+
+    arr = _scene((1024, 1024), (380, 420, 690, 700))
+    slow = slow_crop(arr).image
+    fast = fast_crop(arr)
+    predictor = Predictor(MODEL16)
+    p_slow = predictor.predict(slow.astype(np.float32)[None, ...])[0]
+    p_fast = predictor.predict(fast.astype(np.float32)[None, ...])[0]
+    assert int(np.argmax(p_slow)) == int(np.argmax(p_fast))
+
+
+def test_predict_bytes_matches_file(tmp_path):
+    """predict_bytes(JPEG) phải khớp predict_file trên cùng ảnh."""
+    p = os.path.join(str(tmp_path), "img.jpg")
+    _make_img(p, size=(224, 224), color=(200, 60, 60))
+    predictor = Predictor(MODEL16)
+    r_file = predictor.predict_file(p)
+    with open(p, "rb") as f:
+        data = f.read()
+    r_bytes = predictor.predict_bytes(data)
+    assert r_bytes["class_id"] == r_file["class_id"]
+    assert abs(sum(r_bytes["probabilities"].values()) - 1.0) < 1e-3
+
+
+def test_predict_bytes_large_image(tmp_path):
+    """Ảnh lớn (OV2640-like) qua predict_bytes → crop + predict OK."""
+    p = os.path.join(str(tmp_path), "big.jpg")
+    arr = _scene((1600, 1200), (600, 400, 1000, 800))
+    Image.fromarray(arr).save(p, quality=90)
+    predictor = Predictor(MODEL16)
+    with open(p, "rb") as f:
+        r = predictor.predict_bytes(f.read())
+    assert r["class_id"] in (0, 1, 2)
+    assert r["total_ms"] > 0

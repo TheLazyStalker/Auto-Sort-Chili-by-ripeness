@@ -53,15 +53,11 @@ CLASS_MAPPING = os.path.join(HERE, "models", "class_mapping.json")
 
 CLASSES = ["unripe", "medium_ripe", "ripe"]
 INPUT_SIZE = 224
-# crop_v1: giữ nguyên tham số từ config.yaml (threshold 30, pad 0.20, ...)
-CROP_THRESHOLD = 30.0
-CROP_PAD_FRAC = 0.20
-CROP_BORDER_FRAC = 0.05
-CROP_MIN_AREA_FRAC = 0.005
-CROP_MAX_AREA_FRAC = 0.60
-CROP_DILATE_PX = 2
 # Nếu ảnh đã là derivative 224×224 (được xuất từ pipeline) → bỏ qua crop.
 ALREADY_CROPPED_SIZE = (224, 224)
+
+# fast_crop: morphology numpy + union-find (nhanh hơn nhiều so với PIL rankfilter/DFS)
+from fast_crop import crop_v1 as fast_crop_v1  # noqa: E402
 
 
 def load_classes(mapping_path=CLASS_MAPPING):
@@ -74,96 +70,26 @@ def load_classes(mapping_path=CLASS_MAPPING):
     return CLASSES
 
 
-def estimate_background(arr, border_frac=CROP_BORDER_FRAC):
-    h, w = arr.shape[:2]
-    band = max(1, int(round(min(h, w) * border_frac)))
-    parts = [arr[:band].reshape(-1, 3), arr[-band:].reshape(-1, 3),
-             arr[:, :band].reshape(-1, 3), arr[:, -band:].reshape(-1, 3)]
-    return np.median(np.concatenate(parts, axis=0), axis=0).astype(np.float32)
-
-
-def clean_mask(mask, dilate_px=CROP_DILATE_PX):
-    """Mở/đóng + largest connected component + dilation (PIL thuần)."""
-    if Image is None:
-        raise RuntimeError("Cần Pillow (pip install pillow)")
-    from PIL import ImageFilter
-    m = Image.fromarray((mask.astype(np.uint8) * 255))
-    # open 3x3
-    m = m.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.MaxFilter(3))
-    # close 5x5
-    m = m.filter(ImageFilter.MaxFilter(5)).filter(ImageFilter.MinFilter(5))
-    arr = np.asarray(m) > 127
-
-    # largest connected component (DFS stack)
-    h, w = arr.shape
-    out = np.zeros_like(arr)
-    visited = np.zeros_like(arr)
-    best = (0, None)
-    for y in range(h):
-        for x in range(w):
-            if arr[y, x] and not visited[y, x]:
-                stack = [(y, x)]
-                comp = []
-                visited[y, x] = True
-                while stack:
-                    cy, cx = stack.pop()
-                    comp.append((cy, cx))
-                    for dy, dx in ((-1, 0), (1, 0), (0, -1), (0, 1)):
-                        ny, nx = cy + dy, cx + dx
-                        if 0 <= ny < h and 0 <= nx < w and arr[ny, nx] and not visited[ny, nx]:
-                            visited[ny, nx] = True
-                            stack.append((ny, nx))
-                if len(comp) > best[0]:
-                    best = (len(comp), comp)
-    if best[1]:
-        for y, x in best[1]:
-            out[y, x] = True
-    if dilate_px > 0:
-        out = np.asarray(Image.fromarray((out.astype(np.uint8) * 255)).filter(
-            ImageFilter.MaxFilter(2 * dilate_px + 1))) > 127
-    return out
-
-
-def crop_v1(arr, threshold=CROP_THRESHOLD, pad_frac=CROP_PAD_FRAC):
-    """Crop quả khỏi nền (cùng quy trình như task trước); trả về 224×224 RGB uint8."""
-    h, w = arr.shape[:2]
-    bg = estimate_background(arr)
-    diff = arr.astype(np.float32) - bg.reshape(1, 1, 3)
-    mask = np.sqrt(np.sum(diff * diff, axis=-1)) > float(threshold)
-    mask = clean_mask(mask)
-    ys, xs = np.nonzero(mask)
-    if xs.size == 0:
-        raise ValueError("empty_mask: không tìm thấy foreground (ảnh nền trơn?)")
-    x0, x1 = int(xs.min()), int(xs.max()) + 1
-    y0, y1 = int(ys.min()), int(ys.max()) + 1
-    bw, bh = x1 - x0, y1 - y0
-    pad = float(pad_frac) * max(bw, bh)
-    side = max(1, int(round(max(bw, bh) + 2.0 * pad)))
-    cx, cy = (x0 + x1) / 2.0, (y0 + y1) / 2.0
-    sx0, sy0 = int(round(cx - side / 2.0)), int(round(cy - side / 2.0))
-    bg_u8 = np.clip(np.rint(bg), 0, 255).astype(np.uint8)
-    canvas = np.empty((side, side, 3), dtype=np.uint8)
-    canvas[...] = bg_u8
-    ix0, iy0 = max(0, sx0), max(0, sy0)
-    ix1, iy1 = min(w, sx0 + side), min(h, sy0 + side)
-    if ix1 > ix0 and iy1 > iy0:
-        canvas[iy0 - sy0:iy1 - sy0, ix0 - sx0:ix1 - sx0] = arr[iy0:iy1, ix0:ix1]
-    img = Image.fromarray(canvas).resize((INPUT_SIZE, INPUT_SIZE), Image.Resampling.BILINEAR)
-    return np.asarray(img, dtype=np.uint8)
-
-
-def load_input(path):
+def load_input(path, decode_max=1024):
     """Đọc ảnh → float32 (1,224,224,3) [0,255].
 
-    - Nếu ảnh đã 224×224 (derivative crop_v1) → không crop lại.
-    - Ngược lại chạy crop_v1 (cùng hàm pipeline gốc).
+    - Nếu ảnh đã 224×224 (derivative crop_v1) → không crop lại (nhanh ~1-2 ms).
+    - Ảnh lớn: dùng ``Image.draft`` để JPEG decode ở tỉ lệ nhỏ (nhanh hơn nhiều
+      và ít RAM), rồi chạy fast_crop_v1 (morphology numpy + union-find).
     """
     if Image is None:
         raise RuntimeError("Cần Pillow (pip install pillow)")
     with Image.open(path) as im:
+        # JPEG: decode giảm tỉ lệ (no-op cho PNG/ảnh nhỏ). Không đổi kết quả vì
+        # bước cuối luôn resize về 224.
+        if os.path.splitext(path)[1].lower() in (".jpg", ".jpeg"):
+            try:
+                im.draft("RGB", (decode_max, decode_max))
+            except Exception:
+                pass
         arr = np.asarray(im.convert("RGB"), dtype=np.uint8)
     if arr.shape[:2] != ALREADY_CROPPED_SIZE:
-        arr = crop_v1(arr)
+        arr = fast_crop_v1(arr)
     tensor = arr.astype(np.float32)
     return np.expand_dims(tensor, axis=0)
 
@@ -211,6 +137,35 @@ class Predictor:
             "total_ms": prep_ms + infer_ms,
         }
 
+    def predict_bytes(self, data: bytes, q: int = 90):
+        """Đọc ảnh từ bytes (VD ESP32/OV2640 stream) → kết quả predict.
+
+        Trả về dict giống predict_file (filename='<bytes>').
+        """
+        import io
+        t0 = time.perf_counter()
+        with Image.open(io.BytesIO(data)) as im:
+            if os.path.splitext(getattr(im, "filename", "") or "")[1].lower() in (".jpg", ".jpeg") or True:
+                try:
+                    im.draft("RGB", (1024, 1024))
+                except Exception:
+                    pass
+            arr = np.asarray(im.convert("RGB"), dtype=np.uint8)
+        if arr.shape[:2] != ALREADY_CROPPED_SIZE:
+            arr = fast_crop_v1(arr)
+        prep_ms = (time.perf_counter() - t0) * 1000.0
+        prob, infer_ms = self.predict(arr.astype(np.float32)[None, ...])
+        cls_idx = int(np.argmax(prob))
+        return {
+            "filename": "<stream>",
+            "class": self.classes[cls_idx],
+            "class_id": cls_idx,
+            "probabilities": {c: float(prob[i]) for i, c in enumerate(self.classes)},
+            "preprocessing_ms": prep_ms,
+            "inference_ms": infer_ms,
+            "total_ms": prep_ms + infer_ms,
+        }
+
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Termux CLI predict ớt (Task 6)")
@@ -219,6 +174,8 @@ def main(argv=None):
                         help="đường dẫn .tflite hoặc 'float32'/'float16'")
     parser.add_argument("--dir", help="thư mục nhiều ảnh")
     parser.add_argument("--out", help="CSV output (với --dir)")
+    parser.add_argument("--stdin", action="store_true",
+                        help="đọc JPEG từ stdin (luồng ESP32/OV2640)")
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)
 
@@ -270,6 +227,12 @@ def main(argv=None):
                                 f"{r['inference_ms']:.2f}", f"{r['total_ms']:.2f}",
                                 r.get("error", "")])
             print(f"Đã ghi CSV: {args.out}")
+        return 0
+
+    if args.stdin:
+        data = sys.stdin.buffer.read()
+        r = predictor.predict_bytes(data)
+        print(json_dumps(r))
         return 0
 
     if not args.image:

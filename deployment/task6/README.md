@@ -1,8 +1,15 @@
-# Deployment Task 6 — Termux (điện thoại Android (mẫu đã test))
+# Deployment Task 6 — Termux (điện thoại + camera OV2640/ESP32)
 
-Triển khai CLI dự đoán độ chín ớt bằng MobileNetV3Small (TFLite) trên
-điện thoại Android (mẫu đã test) qua Termux. Thiết bị mục tiêu: Android 11 / ColorOS 11,
-MediaTek SoC ARM64 (MT6771), ARM64, 6GB RAM.
+Triển khai CLI dự đoán độ chín ớt bằng MobileNetV3Small (TFLite) trên Termux.
+
+**Thiết bị đầu cuối:** camera **OV2640** kết nối **ESP32** → trung chuyển ảnh
+→ điện thoại Termux (AI chạy trên điện thoại). Camera OV2640 hỗ trợ các chế độ
+phổ biến: VGA 640×480, XGA 1024×768, UXGA 1600×1200 (JPEG).
+
+> Quyết định đã chốt: toàn bộ inference/preprocessing chạy trên điện thoại
+> (Termux, python-tflite-runtime). ESP32 chỉ chụp/đẩy JPEG (qua BLE/UART/WiFi
+> tuỳ tầng) — không chạy AI. Benchmark OV2640 (container, CPU x86 — tham khảo):
+> UXGA 1600×1200 ≈ 37ms, XGA ≈ 23ms, VGA ≈ 16ms (preprocessing+inference).
 
 ## Nội dung
 
@@ -90,9 +97,14 @@ python benchmark.py --model models/chili_float16.tflite --warmup 10 --runs 100
 - Đầu vào: RGB [0,255] (float32 tensor), 224×224.
 - Model có `Rescaling(1/128, -1)` nhúng → KHÔNG chia 255, KHÔNG đổi RGB→BGR,
   KHÔNG thêm normalization khác, KHÔNG double-scale.
-- Nếu ảnh chưa phải derivative crop_v1 (224×224), `predict.py` tự áp dụng
-  `crop_v1` (cùng tham số pipeline gốc: threshold 30, pad 20%). Nếu ảnh đã là
-  derivative → bỏ qua crop.
+- Nếu ảnh đã là derivative 224×224 → **bỏ qua crop** (nhanh nhất, ~1-2 ms).
+- Nếu ảnh raw (VD 1024×1024) → `fast_crop.py` tự crop: downscale tính mask/bbox
+  + morphology separable + union-find. Benchmark container: **~25 ms** cho 1024²
+  (bản cũ ~350-700 ms). Class parity 45/45 so với crop gốc.
+
+> ⚠️ Tối ưu cho điện thoại: **dùng ảnh đã crop 224×224 (hoặc chụp thẳng
+> kích thước này)** để bỏ qua crop — tổng thời gian ~3-4 ms. Nếu bắt buộc crop
+> raw trên máy, đo lại vì tốc độ phụ thuộc CPU ARM64.
 
 ## 7. Security & giới hạn
 

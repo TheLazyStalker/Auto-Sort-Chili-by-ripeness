@@ -116,3 +116,53 @@ python benchmark.py --model models/chili_float32.tflite --warmup 10 --runs 100 -
 ## 8. Model đề xuất cho Task 7 (sơ bộ)
 
 Float16 (nhỏ hơn 49% so với Float32, parity 1.0 vs Keras). Quyết định cuối dựa trên kết quả benchmark thật (Bước 6).
+
+---
+
+## 9. Tối ưu tốc độ (phát hiện sau benchmark thiết bị ~12-20s)
+
+### 9.1 Nguyên nhân
+
+- Inference TFLite float16 chỉ **~2-4 ms** — không phải vấn đề.
+- Bottleneck là **crop_v1 cũ trong `predict.py`**(xử lý ảnh raw 1024² hoặc 4000×3000): PIL rankfilter + DFS stack Python mất **~350-700 ms** trong container → trên ARM64 phóng đại 30-50× = 12-20s.
+- Import TensorFlow `.lite` (fallback) nặng ~2.6s mỗi lần chạy CLI.
+
+### 9.2 Giải pháp đã triển khai
+
+1. **`fast_crop.py` mới** — mask/bbox tính trên downscale 256 + morphology separable 1D + union-find:
+   - 1024²: **25.5 ms** (bản cũ 358 ms) → giảm ~14×.
+   - 4000×3000 (mô phỏng camera): **83 ms** (cả decode).
+2. **Bỏ qua crop khi ảnh đã 224×224** (derivative): **~0.9 ms**.
+3. **`Image.draft` decode JPEG tỉ lệ nhỏ** cho ảnh lớn (giảm decode/RAM).
+4. Tránh import TensorFlow: chỉ `tflite-runtime` (Termux) — nếu fallback TF thì dùng measure `--no-import-tf`? (không cần; khuyến nghị tflite-runtime).
+
+### 9.3 Kết quả benchmark container (CPU x86, tham khảo)
+
+| Đường | Thời gian |
+|---|---|
+| Derivative 224 → predict | ~0.9 ms + 2.0 ms = **~3 ms** |
+| Raw 1024² → predict | ~25.5 ms + 2.0 ms = **~28 ms** |
+| Ảnh 4000×3000 → predict | ~83 ms + 3.8 ms = **~87 ms** |
+| Class parity với crop gốc (45 ảnh) | **45/45 (1.000)** |
+
+Ước lượng ARM64 (SoC ARM64): ~1.5-3× chậm hơn → end-to-end **khoảng 150-300 ms** cho ảnh lớn, ~10-20 ms cho derivative → thỏa mục tiêu ≤1s.
+
+### 9.4 Khuyến nghị khi sử dụng thực tế
+
+- **Khuyến nghị số 1:** cấp ảnh đã crop 224×224 (hoặc chụp ở kích thước nhỏ) → `predict.py` bỏ qua crop → tổng ~5 ms.
+- Nếu bắt buộc ảnh raw: dùng `fast_crop.py` (đã là mặc định) — đo lại trên máy thật.
+- Cài **`tflite-runtime`** (không phải TensorFlow) để tránh import chậm.
+
+### 9.5 Quyết định thiết bị đầu cuối
+
+- **Camera cuối: OV2640 (qua ESP32) → trung chuyển JPEG → điện thoại Termux** (AI chạy trên điện thoại; ESP32 không chạy AI).
+- Benchmark OV2640 (container, tham khảo) với fast_crop:
+
+| Chế độ OV2640 | Resolution | preprocessing+inference |
+|---|---|---|
+| VGA | 640×480 | ~16 ms |
+| XGA | 1024×768 | ~23 ms |
+| UXGA | 1600×1200 | ~37 ms |
+
+- Khuyến nghị dùng **XGA hoặc VGA** (đủ phân giải cho quả 25–40% khung, nhanh, ít dữ liệu truyền ESP32→phone).
+- Thêm **`Predictor.predict_bytes(data)`** + CLI `--stdin` — nhận JPEG trực tiếp từ luồng ESP32 (không cần file đĩa). Test: 42 ms cho JPEG raw 1024².
