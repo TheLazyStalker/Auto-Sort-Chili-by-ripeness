@@ -1,145 +1,210 @@
-# chili-ripeness-ai — Phân loại độ chín ớt 3 lớp (MobileNetV3Small)
+# chili-ripeness-ai — Phân loại ớt 3 lớp (MobileNetV3Small → TFLite)
 
-Phân loại quả ớt thành `unripe` (chưa chín) / `medium_ripe` (chín vừa) / `ripe` (đã chín) bằng **MobileNetV3Small pretrained ImageNet + Transfer Learning**, đầu vào RGB 224×224, đầu ra Softmax 3 lớp. Mục tiêu triển khai: **chương trình CLI/native chạy trong Termux trên điện thoại Android (điện thoại Android (mẫu đã test))** (dùng LiteRT/TFLite runtime), có khả năng mở rộng giao tiếp ESP32-S3 để điều khiển cơ cấu phân loại.
+Phân loại quả ớt thành **`ripe`** (chín) / **`unripe`** (không chín) / **`damaged`**
+(hư hỏng) bằng MobileNetV3Small (ImageNet) + transfer learning, đầu vào RGB
+224×224, đầu ra softmax. Xuất TensorFlow Lite **Float32 + Float16** để chạy trên
+điện thoại Android qua Termux (CPU), có thể mở rộng giao tiếp ESP32.
 
-> **Trạng thái:** Task 1–6 hoàn thành (phần container). Huấn luyện MobileNetV3Small đã chạy trên 463 derivative `crop_v1` (development split 80/20). **Benchmark trên thiết bị thật (điện thoại Android (mẫu đã test)) đang chờ thực hiện qua Termux** — chưa tuyên bố accuracy/hiệu năng thực tế.
+Hệ thống quản lý **nhiều bộ dữ liệu độc lập**: mỗi dataset tự mô tả số lớp, tên
+lớp, thứ tự nhãn, pipeline tiền xử lý và tỷ lệ chia tập trong
+`datasets/<dataset_id>/dataset_config.yaml`. Không hardcode lớp trong mã nguồn.
 
-Progress: ~80% (container) — chờ đo trên điện thoại + integration ESP32 (Task 7).
+---
 
-## 1. Môi trường đã kiểm chứng (container `ai-workspace`)
+## 1. Bắt đầu nhanh
 
-| Thành phần | Giá trị |
+```bash
+podman start ai-workspace
+podman exec -it ai-workspace bash -lc 'cd /workspace/chili-ripeness-ai && source /workspace/.venv/bin/activate && bash'
+
+# Mở lớp phủ TUI
+python scripts/tui.py
+```
+
+## 2. Lớp phủ TUI (khuyến nghị)
+
+`scripts/tui.py` là **lớp phủ mỏng trên terminal**: mỗi mục là một lệnh CLI có sẵn,
+mỗi tham số là một công tắc. **Xoá file này không ảnh hưởng gì** — mọi lệnh vẫn
+chạy trực tiếp như mục 3.
+
+```
+┌──────────────────── CHILI PIPELINE — TUI ────────────────────┐
+│ dataset: chili_quality_v2   source: (chưa nhập)   class: auto│
+│ [skip_center·]  [skip_train·]  [export✓]                     │
+│ ↑/↓ chọn · Enter chạy · t đổi công tắc · d đổi dataset       │
+│ c đổi class · s nhập source · q thoát                        │
+│                                                              │
+│  ▸ Kiểm tra dữ liệu (dry-run)                                │
+│    Sinh derivative crop_v1                                   │
+│    Train (experiment mới)                                    │
+│    Đánh giá split TEST                                       │
+│    Đánh giá split VALIDATION                                 │
+│    Export TFLite (F32 + F16)                                 │
+│    PIPELINE: center → raw → derivative → train               │
+│    PIPELINE nhanh trên nguồn mẫu (kiểm thử)                  │
+│    Chạy test suite                                           │
+└──────────────────────────────────────────────────────────────┘
+```
+
+| Phím | Tác dụng |
 |---|---|
-| Container | `ai-workspace` (Ubuntu 24.04, root) |
-| Python | 3.12.3 (`/workspace/.venv`) |
-| TensorFlow | 2.17.0 (CPU-only, 8 CPU, 15 GiB RAM, chưa GPU/CUDA) |
-| Keras | 3.15.1 |
-| NumPy | 1.26.4 (khóa `<2.0.0` vì TF 2.17 yêu cầu) |
-| Pillow / PyYAML / scikit-learn / matplotlib / pytest | 13.0.0 / 6.0.3 / 1.5.2 / 3.11.2 / 9.2.0 |
-| Volume | Host ↔ Container `/workspace` (bind mount) |
-| Dự án | `/workspace/chili-ripeness-ai` (trong volume) |
+| `↑` `↓` / `j` `k` | di chuyển giữa các nút |
+| `Enter` | chạy nút đang chọn (xuất ra terminal, Enter để quay lại) |
+| `t` | bật/tắt công tắc (`skip_center`, `skip_train`, `export`) |
+| `d` | đổi dataset |
+| `c` | đổi lớp (cho pipeline: `ripe`/`unripe`/`damaged`) |
+| `s` | nhập thư mục ảnh nguồn |
+| `q` | thoát |
 
-> **Lưu ý tương thích:** TF 2.17 + Python 3.12 đã kiểm chứng. TensorFlow 2.17 yêu cầu `numpy<2.0.0`, `protobuf<5`. Chỉ dùng CPU.
+Không có terminal tương tác (CI, script)? Dùng:
 
-## 2. Cấu trúc dự án
+```bash
+python scripts/tui.py --list                                  # xem mọi nút + lệnh tương ứng
+python scripts/tui.py --run verify --dataset chili_quality_v2  # chạy 1 nút
+python scripts/tui.py --run pipeline --dataset chili_quality_v2 \
+    --source /path/to/images --class damaged --skip-train
+```
+
+> Nếu báo "Không khởi động được TUI", chạy trong terminal thật và đặt
+> `export TERM=xterm`.
+
+## 3. Lệnh CLI (không cần TUI)
+
+```bash
+# Xem dataset có sẵn
+python -c "from src.datasets import list_dataset_ids; print(list_dataset_ids())"
+
+# Kiểm tra dữ liệu (dry-run: chỉ in split, không train)
+python scripts/train.py --dataset chili_quality_v2 --dry-run
+
+# Sinh derivative crop_v1 (bắt buộc trước khi train)
+python scripts/make_dataset_derivatives.py --dataset chili_quality_v2
+
+# Train → experiments/<dataset>/run_NNN/ (không ghi đè run cũ)
+python scripts/train.py --dataset chili_quality_v2
+
+# Đánh giá (đọc class mapping từ run)
+python scripts/evaluate.py --dataset chili_quality_v2 --split test --save-probs
+python scripts/evaluate.py --dataset chili_quality_v2 --split validation
+
+# Export TFLite Float32 + Float16 → <run>/export/
+python scripts/export.py --dataset chili_quality_v2
+python scripts/export.py --dataset chili_quality_v2 --run run_001 --out /tmp/export
+
+# Dự đoán 1 ảnh bằng model .keras
+python -m src.predict --image anh.png \
+    --model experiments/chili_quality_v2/run_001/model/best_chili.keras \
+    --classes-file experiments/chili_quality_v2/run_001/class_mapping.json
+
+# Test
+python -m pytest -q
+```
+
+## 4. Pipeline hoàn chỉnh: ảnh raw → center → dataset → train → export
+
+Một lệnh, tham số lấy từ **`pipeline_config.json`** (gốc project):
+
+```bash
+python scripts/pipeline.py --source /path/to/images --class damaged --export
+python scripts/pipeline.py --source /path/to/has_class_subdirs
+python scripts/pipeline.py --source-url https://host/imgs.zip --class damaged
+python scripts/pipeline.py --source /path/to/images --class damaged --skip-train  # kiểm thử
+```
+
+Luồng: **copy nguồn** (không bao giờ di chuyển) → `make-object-to-center`
+(center + nền đồng nhất) → kiểm tra ảnh → `datasets/<id>/raw/<class>/` (không ghi
+đè) → derivative `crop_v1` → train (experiment mới) → export.
+
+Chi tiết + cách kiểm thử độc lập: **`DOCS_PIPELINE.md`**.
+
+## 5. Cấu hình
+
+### `pipeline_config.json` (một nguồn cho cả quy trình)
+
+| Nhóm | Nội dung |
+|---|---|
+| `paths` | `datasets_root`, `experiments_root`, `staging_root`, `center_tool_dir` |
+| `dataset` | dataset mặc định + danh sách lớp |
+| `centering` | `background_bgr`, `size`, `fruit_frac`, `pad`, `ext`, `suffix` (tham số make-object-to-center) |
+| `preprocessing` | `crop_v1`: `threshold`, `pad_frac`, `border_frac`, `min/max_area_frac`, `dilate_px`, `output_size` |
+| `split` | `ratios`, `seed` |
+| `training` | epochs, lr, patience, batch_size, class_weight |
+| `model` | base, weights, dropout, fine_tune_layers |
+
+Sửa JSON → mọi bước đổi theo. Ví dụ đổi nền centering:
+
+```json
+"centering": { "background_bgr": [255, 255, 255] }
+```
+
+### `datasets/<dataset_id>/dataset_config.yaml`
+
+```yaml
+dataset_id: chili_quality_v2
+classes: [ripe, unripe, damaged]     # thứ tự = label index
+paths: { raw: ..., derived: ..., manifests: ... }
+preprocessing: { pipeline: crop_v1, version: v1 }
+split: { strategy: group_stratified, ratios: [0.70, 0.15, 0.15], seed: 42 }
+```
+
+**Tạo dataset mới:** copy thư mục `datasets/chili_quality_v2/`, sửa `dataset_id`,
+`classes`, `paths`. Không cần sửa mã nguồn.
+
+## 6. Cấu trúc thư mục
 
 ```text
 chili-ripeness-ai/
-├── dataset/
-│   ├── raw/{unripe,medium_ripe,ripe}/   # Ảnh gốc (473 ảnh, BẤT BIẾN)
-│   ├── derived/crop_v1/                 # Derivative crop 224×224 + metadata.csv
-│   ├── review_exclusions.csv            # 10 ảnh bị loại/chờ review
-│   ├── capture_log.csv                  # Log chụp Task 3
-│   ├── group_splits.csv                 # Gán split theo group (50/50 val/test)
-│   ├── label_overrides.csv              # Override nhãn (nếu có)
-│   └── split_manifest_task3.json        # Manifest Task 3 (train-only hiện tại)
-├── artifacts/task4/                     # Model .keras + training/eval DEV
-├── artifacts/task5/                     # TFLite F32/F16 + conversion/eval/bench
-├── deployment/task6/                    # Package Termux (predict/benchmark/check_env)
-├── models/checkpoints/  saved_model/  tflite/
-├── reports/figures/  metrics/
-├── src/
-│   ├── config.py        # Đọc config.yaml, seed, class mapping, path resolution
-│   ├── dataset.py       # Quét ảnh, lỗi/trùng, chia tập, tf.data
-│   ├── crop.py          # crop_v1 (mask, largest component, bbox, 224×224)
-│   ├── task3.py         # Exclusion/group split/manifest Task 3
-│   ├── model.py         # MobileNetV2/V3Small + GAP + Dropout + Softmax, freeze/fine-tune
-│   ├── task4.py         # Dev split 80/20, augmentation, hai phase training, metrics
-│   ├── train.py         # (legacy) train MobileNetV2 2 giai đoạn
-│   ├── evaluate.py      # (legacy) evaluation manifest cũ
-│   ├── predict.py       # Dự đoán 1 ảnh
-│   ├── export_tflite.py # (legacy) export TFLite cũ
-│   └── utils.py         # Class weights, md5, vẽ đường cong
-├── scripts/
-│   ├── check_dataset.py / audit_dataset.py / prepare_dataset.py
-│   ├── import_new_images.py / label_review.py / split_new_groups.py
-│   ├── make_crop_derivatives.py / qa_crop.py / build_task3_manifest.py
-│   ├── train_task4.py / evaluate_task4.py / measure_latency.py / verify_task4_dataset.py
-│   ├── convert_task5.py / evaluate_task5.py / benchmark_task5.py
-│   └── smoke_test_model.py
-├── tests/                     # Unit tests (118 tests, không cần ảnh thật)
-├── config.yaml                # Mọi tham số
-├── requirements.txt
-├── README.md  DATASET_GUIDE.md  DATASET_AUDIT.md  PROJECT_ROADMAP.md  .gitignore
+├── pipeline_config.json          # config trung tâm
+├── datasets/
+│   ├── legacy_ripeness_v1/dataset_config.yaml   # dataset cũ (trỏ tới dataset/)
+│   └── chili_quality_v2/{raw,derived,dataset_config.yaml}
+├── dataset/                      # dataset cũ (unripe/medium_ripe/ripe) — giữ nguyên
+├── configs/{training,models}/    # config YAML (tùy chọn, override JSON)
+├── experiments/<dataset>/run_NNN/{config.yaml, class_mapping.json,
+│       dataset_manifest.json, training_history.json, metrics.json,
+│       model/best_chili.keras, evaluation/, export/}
+├── deployment/task6/             # CLI Termux: predict/benchmark/check_env + model .tflite
+├── tools/make-object-to-center/  # tool center ảnh (vendored)
+├── src/                          # datasets, experiment, training, model, crop, centering...
+├── scripts/                      # tui.py, pipeline.py, train.py, evaluate.py, export.py...
+└── tests/                        # 156 unit tests
 ```
 
-## 3. Cài đặt
+## 7. Dataset hiện có
 
-```bash
-# 1) Vào container (đã chạy sẵn)
-podman exec -it ai-workspace bash
-cd /workspace/chili-ripeness-ai
+| dataset_id | classes | ảnh |
+|---|---|---|
+| `chili_quality_v2` | ripe, unripe, damaged | 596 (272 / 191 / 133) |
+| `legacy_ripeness_v1` | unripe, medium_ripe, ripe | 473 |
 
-# 2) Kích hoạt venv và cài đúng phiên bản đã khóa
-source /workspace/.venv/bin/activate
-pip install -r requirements.txt
-python -c "import tensorflow as tf; print(tf.__version__)"
-```
+Ảnh gốc nằm trong `dataset/raw/` và `datasets/*/raw/` (không commit lên git —
+gitignore). Model/experiment nằm trong `experiments/`, export trong
+`experiments/<id>/run_*/export/`.
 
-## 4. Pipeline chính (Task 3–5)
+## 8. Kết quả tham chiếu (split dev 70/15/15, seed 42)
 
-```bash
-# Xác minh dataset/derivative (SHA256 raw so với baseline)
-python scripts/verify_task4_dataset.py --sha256
+`chili_quality_v2` · run_001 — MobileNetV3Small, 940.851 tham số:
 
-# Train MobileNetV3Small (dev 80/20 seed 42) → artifacts/task4/
-python scripts/train_task4.py
+| Split | Accuracy | Macro F1 |
+|---|---|---|
+| validation (90) | 0.9889 | 0.9860 |
+| test (89) | 0.9888 | 0.9874 |
 
-# Evaluation DEV (accuracy, P/R/F1, confusion matrix)
-python scripts/evaluate_task4.py --save-probs
+TFLite export: Float32 3.746 MB, Float16 1.913 MB.
 
-# Latency CPU (tham khảo)
-python scripts/measure_latency.py --warmup 5 --runs 50
+> **Lưu ý:** split chia theo *ảnh*; danh tính quả ớt chưa xác định nên có thể có
+> ảnh cùng quả ở cả train và test → số liệu lạc quan. Đây **không phải** benchmark
+> độc lập và không phải cam kết độ chính xác thực tế. Muốn đánh giá đúng cần thu
+> thêm quả độc lập (`group_id`).
 
-# Convert TFLite (Float32 + Float16, không INT8) → artifacts/task5/
-python scripts/convert_task5.py
+## 9. Triển khai Termux
 
-# Đối chiếu Keras vs TFLite trên dev
-python scripts/evaluate_task5.py
+`deployment/task6/README.md` — CLI `predict.py` (ảnh đơn / cả thư mục / CSV),
+`benchmark.py`, `check_env.py`, kèm model Float16/Float32. Preprocessing khớp
+pipeline train: RGB `[0,255]`, `crop_v1`, không chia 255 (model tự
+`Rescaling(1/128, -1)`).
 
-# Benchmark TFLite (container)
-python scripts/benchmark_task5.py --warmup 5 --runs 50
-```
+## 10. Môi trường
 
-## 5. Triển khai Termux (Task 6) — `deployment/task6/`
-
-Xem `deployment/task6/README.md` để cài đặt từng bước trên điện thoại. Tóm tắt:
-
-```bash
-pkg update -y && pkg upgrade -y
-pkg install -y python python-pip
-pip install 'numpy<2.0.0' Pillow tflite-runtime
-# copy deployment/task6/ → ~/task6/ trên máy
-cd ~/task6
-python check_env.py
-python predict.py image.jpg                 # Float16 mặc định
-python predict.py --model models/chili_float32.tflite image.jpg
-python predict.py --dir images/ --out results.csv
-python benchmark.py --model models/chili_float16.tflite --warmup 10 --runs 100
-```
-
-- `predict.py` in: filename, class, xác suất 3 lớp, preprocessing_ms, inference_ms, total_ms.
-- Preprocessing khớp pipeline container: RGB [0,255] → 224×224 → float32 tensor; crop_v1 tự động nếu ảnh chưa crop.
-- Kết quả trên thiết bị thật cần gửi lại để tổng hợp benchmark chính thức.
-
-## 6. Kết quả hiện tại (DEVELOPMENT — chưa phải benchmark độc lập)
-
-| Hạng mục | Giá trị |
-|---|---|
-| Dataset | 473 raw (unripe 197 / medium 142 / ripe 134); 463 derivative crop_v1 hợp lệ |
-| Model | MobileNetV3Small (ImageNet), 940,851 params |
-| Dev split | 80/20 image-level, seed 42, leaky (train 371 / val 92) |
-| Phase A/B | best val_acc 0.9891 (epoch 9) / 0.9891 (epoch 1, early stop) |
-| Dev metrics | accuracy 0.9891, macro F1 0.9877; confusion `[[38,0,0],[0,27,1],[0,0,26]]` |
-| TFLite | Float32 3.746 MB (pure), Float16 1.913 MB (primary); agreement 1.0 vs Keras |
-| Latency (container) | Keras ~58ms; TFLite F32 ~2.27ms, F16 ~2.20ms (tham khảo) |
-| Tests | 118 passed; raw SHA256 473/473 khớp baseline |
-
-> ⚠️ **KHÔNG tuyên bố accuracy thực tế ≥90%** — dev split leaky (chưa biết ảnh cũ thuộc cùng quả hay không); benchmark chính thức cần tập test độc lập + đo trên điện thoại Android (mẫu đã test).
-
-## 7. Các hạn chế / việc tiếp theo
-
-- Thu thập dữ liệu mới (quả độc lập) + điền `group_id` → tạo validation/test độc lập (Task 3 Phase 2–5).
-- Đo benchmark trên điện thoại thật (Task 6 §D) — đang chờ người dùng.
-- Task 7: tích hợp ESP32/OV2640, throughput toàn hệ thống.
-- Xem `PROJECT_ROADMAP.md` cho chi tiết từng task.
+Container `ai-workspace` · Python 3.12.3 · TensorFlow 2.17.0 (CPU) · Keras 3.15.1
+· numpy 1.26.4 · Pillow 13.0.0 · opencv-python-headless 4.11.0 · pytest.

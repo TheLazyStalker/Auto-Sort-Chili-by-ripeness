@@ -9,3 +9,6 @@ scikit-learn==1.5.2
 scipy==1.14.1
 matplotlib>=3.8.0
 pytest>=8.0.0
+
+# Pipeline centering (tools/make-object-to-center)
+opencv-python-headless>=4.8,<4.12

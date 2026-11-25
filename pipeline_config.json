@@ -1,0 +1,63 @@
+{
+  "_comment": "Config TRUNG TÂM cho toàn bộ pipeline (center → raw → derivative → train → export). Sửa file này là mọi bước thay đổi theo. Load bởi src/pipeline_config.py.",
+  "paths": {
+    "datasets_root": "datasets",
+    "experiments_root": "experiments",
+    "staging_root": ".pipeline_staging",
+    "center_tool_dir": "tools/make-object-to-center"
+  },
+  "dataset": {
+    "default_id": "chili_quality_v2",
+    "classes": ["ripe", "unripe", "damaged"]
+  },
+  "centering": {
+    "enabled": true,
+    "python": "python3",
+    "script": "crop_chili.py",
+    "size": 1024,
+    "background_bgr": [235, 235, 220],
+    "fruit_frac": 0.5,
+    "pad": 0.12,
+    "ext": ".jpg",
+    "suffix": "",
+    "timeout_s": 1800
+  },
+  "preprocessing": {
+    "pipeline": "crop_v1",
+    "output_size": 224,
+    "pad_frac": 0.2,
+    "threshold": 30.0,
+    "border_frac": 0.05,
+    "min_area_frac": 0.005,
+    "max_area_frac": 0.6,
+    "dilate_px": 2
+  },
+  "split": {
+    "ratios": [0.7, 0.15, 0.15],
+    "seed": 42
+  },
+  "training": {
+    "seed": 42,
+    "batch_size": 32,
+    "class_weight": "balanced",
+    "stage1_epochs": 30,
+    "stage1_lr": 0.001,
+    "stage2_epochs": 20,
+    "stage2_lr": 0.0001,
+    "early_stopping_patience": 7,
+    "reduce_lr_patience": 4,
+    "reduce_lr_factor": 0.5,
+    "reduce_lr_min_lr": 1e-06
+  },
+  "model": {
+    "name": "mobilenetv3small",
+    "base": "mobilenetv3small",
+    "weights": "imagenet",
+    "include_top": false,
+    "include_preprocessing": true,
+    "dropout": 0.3,
+    "fine_tune_layers": 20,
+    "loss": "sparse_categorical_crossentropy",
+    "metrics": ["accuracy"]
+  }
+}

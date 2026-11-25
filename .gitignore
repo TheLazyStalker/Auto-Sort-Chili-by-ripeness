@@ -1,19 +1,25 @@
-# Ảnh & dữ liệu (nặng, quản lý riêng)
-dataset/raw/*/*
+# Ảnh gốc: ĐƯỢC commit (tài nguyên ảnh do chủ dự án chụp)
+#   dataset/raw/{unripe,medium_ripe,ripe}/        (dataset cũ)
+#   datasets/<id>/raw/<class>/                    (dataset mới)
+# Chỉ loại trừ thư mục rỗng, không loại trừ ảnh.
+dataset/raw/*/.gitkeep
+datasets/*/raw/*/.gitkeep
+
+# Dữ liệu DẪN XUẤT & sinh tự động (tái tạo được) — không commit
+dataset/derived/
+datasets/*/derived/
 dataset/train/**/*
 dataset/validation/**/*
 dataset/test/**/*
 dataset/split_manifest*.json
 dataset/groups.csv
-dataset/derived/
-!dataset/raw/**/.gitkeep
-!dataset/train/.gitkeep
-!dataset/validation/.gitkeep
-!dataset/test/.gitkeep
+experiments/
+exports/
+.pipeline_staging/
+tools/make-object-to-center/examples/red-chili/input/
 
 # Model & artifact sinh ra khi huấn luyện/export
 artifacts/
-artifacts_task4_train.log
 models/checkpoints/**/*
 models/saved_model/**/*
 reports/figures/**/*
@@ -22,15 +28,11 @@ reports/metrics/**/*
 !models/saved_model/.gitkeep
 !reports/figures/.gitkeep
 !reports/metrics/.gitkeep
+!reports/metrics/crop_v1_report.json
 
-# TFLite: throw các artifact (model, report) nhưng GIỮ tài liệu + labels + metadata
+# TFLite/model file lạc (bất cứ đâu) — phòng ngừa
 models/tflite/**/*
 !models/tflite/.gitkeep
-!models/tflite/*.md
-!models/tflite/labels.txt
-!models/tflite/model_metadata.json
-
-# Model file lạc (bất cứ đâu) — phòng ngừa
 *.tflite
 *.keras
 *.h5
@@ -38,7 +40,7 @@ models/tflite/**/*
 *.pb
 *.savedmodel
 *.onnx
-# Deployment Task 6: models nhỏ cần commit để dùng trên Termux
+# Deployment: model TFLite nhỏ cần commit để chạy trên Termux
 !deployment/task6/models/*.tflite
 !deployment/task6/models/*.json
 
@@ -72,4 +74,4 @@ Thumbs.db
 *.tmp
 *.swp
 nohup.out
-zip/deployment/*.zip
+*.zip

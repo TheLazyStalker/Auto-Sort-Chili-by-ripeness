@@ -160,15 +160,21 @@ def make_callbacks_for_phase(ckpt_path: str, phase_cfg: dict, verbose: bool = Tr
 
 
 def train_two_phases(cfg: dict, model, train_ds, val_ds, out_dir: str,
-                     use_class_weight: bool = True, verbose: bool = True) -> dict:
-    """Chạy Phase A (freeze) + Phase B (fine-tune). Ghi best .keras cho từng phase."""
+                     use_class_weight: bool = True, verbose: bool = True,
+                     num_classes: int | None = None) -> dict:
+    """Chạy Phase A (freeze) + Phase B (fine-tune). Ghi best .keras cho từng phase.
+
+    ``num_classes``: dùng để tính class weight; None → fallback
+    ``cfg["project"]["num_classes"]`` (tương thích ngược).
+    """
     os.makedirs(out_dir, exist_ok=True)
 
     # Class weights (nếu có) từ labels train
     class_weight = None
     if use_class_weight:
+        nc = num_classes if num_classes is not None else int(cfg.get("project", {}).get("num_classes", 3))
         labels = np.array([tf.cast(y, tf.int64).numpy() for _, y in train_ds.unbatch()])
-        class_weight = compute_class_weight(labels, int(cfg["project"]["num_classes"]))
+        class_weight = compute_class_weight(labels, nc)
 
     history = {"phase_a": None, "phase_b": None}
     ckpt_a = os.path.join(out_dir, "best_phase_a.keras")
@@ -181,12 +187,15 @@ def train_two_phases(cfg: dict, model, train_ds, val_ds, out_dir: str,
     freeze_backbone(model, fine_tune_layers=0)
     compile_model(model, learning_rate=pa["lr"], loss="sparse_categorical_crossentropy")
     callbacks_a = make_callbacks_for_phase(ckpt_a, pa, verbose=verbose)
-    hist_a = model.fit(
-        train_ds, validation_data=val_ds,
-        epochs=pa["epochs"], callbacks=callbacks_a, shuffle=False,
-        class_weight=class_weight, verbose=1 if verbose else 0)
+    fit_kwargs = dict(epochs=pa["epochs"], callbacks=callbacks_a, shuffle=False,
+                      class_weight=class_weight, verbose=1 if verbose else 0)
+    if val_ds is not None:
+        fit_kwargs["validation_data"] = val_ds
+    hist_a = model.fit(train_ds, **fit_kwargs)
     history["phase_a"] = hist_a.history
-    print(f"  Phase A best val_accuracy: {max(hist_a.history['val_accuracy']):.4f}")
+    va_a = hist_a.history.get("val_accuracy")
+    print(f"  Phase A best val_accuracy: "
+          f"{max(va_a) if va_a else 'N/A (không có validation)'}")
 
     # ---------- Phase B: fine-tune phần cuối backbone ----------
     pb = get_phase_config(cfg, "b")
@@ -195,17 +204,20 @@ def train_two_phases(cfg: dict, model, train_ds, val_ds, out_dir: str,
     freeze_backbone(model, fine_tune_layers=pb["fine_tune_layers"])
     compile_model(model, learning_rate=pb["lr"], loss="sparse_categorical_crossentropy")
     callbacks_b = make_callbacks_for_phase(ckpt_b, pb, verbose=verbose)
-    hist_b = model.fit(
-        train_ds, validation_data=val_ds,
-        epochs=pb["epochs"], callbacks=callbacks_b, shuffle=False,
-        class_weight=class_weight, verbose=1 if verbose else 0)
+    fit_kwargs = dict(epochs=pb["epochs"], callbacks=callbacks_b, shuffle=False,
+                      class_weight=class_weight, verbose=1 if verbose else 0)
+    if val_ds is not None:
+        fit_kwargs["validation_data"] = val_ds
+    hist_b = model.fit(train_ds, **fit_kwargs)
     history["phase_b"] = hist_b.history
-    print(f"  Phase B best val_accuracy: {max(hist_b.history['val_accuracy']):.4f}")
+    va_b = hist_b.history.get("val_accuracy")
+    print(f"  Phase B best val_accuracy: "
+          f"{max(va_b) if va_b else 'N/A (không có validation)'}")
 
     return {"history": history, "class_weight": class_weight,
             "checkpoint_a": ckpt_a, "checkpoint_b": ckpt_b,
-            "best_epoch_a": int(np.argmax(hist_a.history["val_accuracy"])),
-            "best_epoch_b": int(np.argmax(hist_b.history["val_accuracy"]))}
+            "best_epoch_a": int(np.argmax(va_a)) if va_a else len(hist_a.history.get("accuracy", [])),
+            "best_epoch_b": int(np.argmax(va_b)) if va_b else len(hist_b.history.get("accuracy", []))}
 
 
 # ------------------------------------------------------------- metrics ----

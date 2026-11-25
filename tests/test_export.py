@@ -1,3 +1,4 @@
+import json
 import os
 
 import numpy as np
@@ -73,17 +74,29 @@ def test_export_report_contains_sizes_and_compare(tmp_path):
     assert len(cmp["keras"]) == 3 and len(cmp["tflite"]) == 3
 
 
-def test_labels_and_metadata_files_exist():
-    from src.config import PROJECT_ROOT
+def test_labels_and_metadata_written_by_export(tmp_path):
+    """Export phải SINH labels.txt + model_metadata.json (không dựa file tĩnh)."""
+    from src.export_tflite import export_tflite
+    from src.config import load_config
 
-    labels = os.path.join(PROJECT_ROOT, "models", "tflite", "labels.txt")
+    cfg = load_config()
+    cfg = dict(cfg)
+    cfg["paths"] = dict(cfg["paths"])
+    cfg["paths"]["tflite"] = str(tmp_path / "tflite")
+    cfg["paths"]["saved_model"] = str(tmp_path / "saved_model")
+    model = build_model(cfg)
+    model_path = str(tmp_path / "m.keras")
+    model.save(model_path)
+    export_tflite(cfg, model_path=model_path, classes=["a", "b", "c"],
+                  out_dir=cfg["paths"]["tflite"])
+    labels = os.path.join(cfg["paths"]["tflite"], "labels.txt")
     assert os.path.isfile(labels)
     with open(labels) as f:
-        assert [l.strip() for l in f if l.strip()] == ["unripe", "medium_ripe", "ripe"]
-    metadata = os.path.join(PROJECT_ROOT, "models", "tflite", "model_metadata.json")
+        assert [l.strip() for l in f if l.strip()] == ["a", "b", "c"]
+    metadata = os.path.join(cfg["paths"]["tflite"], "model_metadata.json")
     assert os.path.isfile(metadata)
-    doc = os.path.join(PROJECT_ROOT, "models", "tflite", "android_integration.md")
-    assert os.path.isfile(doc)
+    with open(metadata, encoding="utf-8") as f:
+        assert json.load(f)["output"]["labels"] == ["a", "b", "c"]
 
 
 def test_predict_shows_class_id_confidence_uncertain(tmp_path):

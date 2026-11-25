@@ -1,4 +1,4 @@
-# Deployment Task 6 — Termux (điện thoại + camera OV2640/ESP32)
+# Deployment — Termux (điện thoại + camera OV2640/ESP32)
 
 Triển khai CLI dự đoán độ chín ớt bằng MobileNetV3Small (TFLite) trên Termux.
 
@@ -110,5 +110,5 @@ python benchmark.py --model models/chili_float16.tflite --warmup 10 --runs 100
 
 - KHÔNG root, không đổi hệ thống; không yêu cầu app ngoài Termux.
 - Kết quả trên thiết bị KHÔNG đại diện cho benchmark cuối; mục tiêu
-  inference ≤1s/ảnh phải đo trực tiếp (Task 6 §D).
+  inference ≤1s/ảnh phải đo trực tiếp trên máy thật.
 - KHÔNG dùng ảnh đó để tuyên bố accuracy thực tế ≥90% (thiếu test độc lập).

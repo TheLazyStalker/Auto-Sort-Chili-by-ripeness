@@ -1,0 +1,33 @@
+# Training config mặc định (schema khớp src/task4.get_phase_config + src/training)
+seed: 42
+batch_size: 32
+class_weight: balanced          # balanced | null
+
+# Phase A — freeze backbone, train head
+stage1_epochs: 30
+stage1_lr: 0.001
+
+# Phase B — fine-tune các layer cuối của backbone
+stage2_epochs: 20
+stage2_lr: 0.0001
+
+# Callbacks (áp dụng cho cả 2 phase)
+early_stopping_patience: 7
+reduce_lr_patience: 4
+reduce_lr_factor: 0.5
+reduce_lr_min_lr: 0.000001
+
+# Augmentation hiện được cố định trong src/task4.build_augmentation (train-only),
+# KHÔNG đọc từ file này — ghi lại để tham chiếu:
+#   RandomFlip(horizontal+vertical), RandomRotation(0.1), RandomZoom(0.1),
+#   RandomTranslation(0.05), RandomBrightness(0.05)
+#   KHÔNG đổi hue/saturation (màu là tín hiệu chính).
+augmentation_reference:
+  horizontal_flip: true
+  vertical_flip: true
+  rotation_factor: 0.1
+  zoom_factor: 0.1
+  translation_factor: 0.05
+  brightness_factor: 0.05
+  hue_factor: 0.0
+  saturation_factor: 0.0

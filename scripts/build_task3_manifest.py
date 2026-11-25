@@ -3,7 +3,7 @@
 Dùng:
   python scripts/build_task3_manifest.py [--config config.yaml] [--require-all-splits]
 
-Quy tắc (đã chốt Q1–Q7, task3_data_plan.md §8):
+Quy tắc:
 - Chỉ đưa derivative có crop_status=ok vào manifest.
 - Ảnh bị loại (review_exclusions.csv) không bao giờ vào manifest.
 - Ảnh cũ (không group_id) → train.

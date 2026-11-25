@@ -56,6 +56,27 @@ def predict_batch(model, image_paths: list, classes: list | None = None,
     return [predict_image(model, p, classes, image_size, confidence_threshold) for p in image_paths]
 
 
+def load_classes_from_file(path: str) -> list | None:
+    """Đọc class mapping từ JSON ({label: index}) hoặc txt (mỗi dòng 1 label).
+
+    Dùng cho model train qua framework multi-dataset (experiment lưu
+    class_mapping.json). Trả None nếu file không tồn tại/đọc lỗi.
+    """
+    import json
+    if not path or not os.path.isfile(path):
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            text = f.read().strip()
+        if path.lower().endswith(".json"):
+            data = json.loads(text)
+            if isinstance(data, dict):
+                return [k for k, _ in sorted(data.items(), key=lambda kv: int(kv[1]))]
+        return [ln for ln in text.splitlines() if ln.strip()]
+    except Exception:
+        return None
+
+
 def load_model_for_predict(cfg: dict, model_path: str | None = None):
     model_path = model_path or os.path.join(cfg["paths"]["saved_model"], "best_model.keras")
     if not os.path.exists(model_path):
@@ -88,6 +109,9 @@ def main(argv=None) -> None:
                           help="Đường dẫn ảnh (phần 1 dùng positional)")
     parser.add_argument("--config", default=None)
     parser.add_argument("--model", default=None)
+    parser.add_argument("--classes-file", default=None,
+                          help="class_mapping.json (framework multi-dataset) "
+                               "hoặc labels.txt — để predict đúng nhãn dataset")
     parser.add_argument("--threshold", type=float, default=None,
                           help="Ngưỡng confidence; dưới ngưỡng → uncertain")
     args = parser.parse_args(argv)
@@ -104,7 +128,11 @@ def main(argv=None) -> None:
         print(f"[LỖI] {exc}", file=sys.stderr)
         sys.exit(2)
     threshold = _get_threshold(cfg, args.threshold)
-    result = predict_image(model, image_path, get_classes(cfg),
+    # Thứ tự classes: explicit → model.classes_ → --classes-file → fallback
+    classes = getattr(model, "classes_", None) or load_classes_from_file(args.classes_file)
+    if not classes:
+        classes = get_classes(cfg)
+    result = predict_image(model, image_path, classes,
                            confidence_threshold=threshold)
     print(json.dumps(result, indent=2, ensure_ascii=False))
     print(f"\nclass={result['class_id']} label={result['label']} "

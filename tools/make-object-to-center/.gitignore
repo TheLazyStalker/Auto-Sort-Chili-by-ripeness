@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Local outputs (root only)
+/out/
+/output/
+/visualize/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

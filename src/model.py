@@ -60,10 +60,20 @@ def build_base_model(cfg: dict, trainable: bool = False):
     return base
 
 
-def build_model(cfg: dict, trainable_backbone: bool = False):
-    """Dựng model đầy đủ: backbone + GAP + Dropout + Dense(3, softmax)."""
-    classes = cfg["project"]["classes"]
-    num_classes = int(cfg["project"]["num_classes"])
+def build_model(cfg: dict, trainable_backbone: bool = False,
+                classes: list[str] | None = None, num_classes: int | None = None):
+    """Dựng model đầy đủ: backbone + GAP + Dropout + Dense(num_classes, softmax).
+
+    - ``classes`` / ``num_classes``: truyền từ DatasetConfig (multi-dataset).
+      Nếu không truyền, fallback về ``cfg["project"]`` (tương thích ngược).
+    - Số neuron output = số lớp của dataset — không hardcode 3.
+    """
+    if classes is None:
+        classes = list(cfg.get("project", {}).get("classes", []))
+    if num_classes is None:
+        num_classes = int(cfg.get("project", {}).get("num_classes", 0) or len(classes))
+    if num_classes <= 0:
+        raise ValueError("build_model: num_classes <= 0 — hãy truyền classes từ DatasetConfig.")
     image_size = int(cfg["data"]["image_size"])
     dropout = float(cfg["model"].get("dropout", 0.3))
     base_name = normalize_base_name(cfg["model"].get("base", "mobilenetv2"))
@@ -84,7 +94,8 @@ def build_model(cfg: dict, trainable_backbone: bool = False):
     x = tf.keras.layers.Dropout(dropout, name="dropout")(x)
     outputs = tf.keras.layers.Dense(num_classes, activation="softmax", name="softmax_output")(x)
     model = tf.keras.Model(inputs, outputs, name=f"chili_ripeness_{base_name}")
-    model.classes_ = list(classes)  # gắn danh sách lớp để predict dùng
+    if classes:
+        model.classes_ = list(classes)  # gắn danh sách lớp để predict dùng
     model.base_name = base_name
     return model
 

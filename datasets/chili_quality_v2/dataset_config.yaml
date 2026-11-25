@@ -1,0 +1,49 @@
+# Dataset config: chili_quality_v2 (dataset mới, độc lập)
+#
+# Nguồn ảnh (provenance):
+#   raw/damaged/  ← 133 ảnh chụp mới (2026-11-21), đã qua make-object-to-center
+#                   (nền đồng nhất RGB 220,235,235; object căn giữa)
+#   raw/ripe/     ← dataset CŨ dataset/raw/ripe + dataset/raw/medium_ripe (272 ảnh)
+#   raw/unripe/   ← dataset CŨ dataset/raw/unripe (191 ảnh)
+#   → Ảnh legacy được copy nguyên bản (không sửa pixel); 10 ảnh trong
+#     dataset/review_exclusions.csv bị loại khỏi tập train.
+#
+# QUYẾT ĐỊNH NHÃN (do chủ dự án yêu cầu, 2026-11-23):
+#   gộp medium_ripe → ripe. Dataset mới KHÔNG có lớp medium_ripe.
+#   Đây là bản sao có chủ đích; dataset cũ giữ nguyên nhãn gốc, không bị sửa.
+dataset_id: chili_quality_v2
+dataset_version: 2
+task_type: image_classification
+
+# Thứ tự danh sách này = label index (0-based) trong training/evaluation.
+classes:
+  - ripe
+  - unripe
+  - damaged
+
+paths:
+  raw: datasets/chili_quality_v2/raw            # tương đối project root
+  manifests: datasets/chili_quality_v2/manifests
+  derived: datasets/chili_quality_v2/derived
+
+input:
+  image_size: 224
+  color_mode: RGB
+
+preprocessing:
+  pipeline: crop_v1
+  version: v1
+
+split:
+  strategy: group_stratified
+  ratios: [0.70, 0.15, 0.15]
+  seed: 42
+
+labels:
+  source: directory
+  allow_pending_review: true
+  aliases: {}          # không có alias cho dataset mới
+
+validation:
+  # Dataset mới chưa có ảnh → chờ thu thập; framework phải báo "trống" rõ ràng.
+  require_nonempty: false

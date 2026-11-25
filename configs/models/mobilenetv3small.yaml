@@ -1,0 +1,15 @@
+# Model config mặc định (MobileNetV3Small — Task 4/5)
+name: mobilenetv3small
+base: mobilenetv3small
+weights: imagenet
+include_top: false
+include_preprocessing: true    # V3: Rescaling(1/128,-1) nhúng; input RGB [0,255]
+dropout: 0.3
+fine_tune_layers: 20          # số layer cuối backbone mở khi fine-tune (V3Small)
+loss: sparse_categorical_crossentropy
+metrics: [accuracy]
+
+export:
+  float32: true
+  float16: true
+  int8: false                  # Task 5 đã loại bỏ INT8

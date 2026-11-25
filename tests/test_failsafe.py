@@ -44,25 +44,26 @@ def test_smoke_checks_correct_weights_filename():
     assert "mobilenet_v2_weights_tf_dim_ordering_tf_kernels.h5" not in src
 
 
-def test_android_docs_use_0_255_preprocessing():
-    """Tài liệu Android/metadata phải khớp [0,255]→[-1,1], KHÔNG Rescaling 1/255."""
+def test_preprocessing_invariant_documented_and_configured():
+    """Chuẩn tiền xử lý: RGB [0,255] → model tự Rescaling(1/128,-1); KHÔNG chia 255."""
     import json
-    doc_path = os.path.join(PROJECT_ROOT, "models/tflite/android_integration.md")
-    meta_path = os.path.join(PROJECT_ROOT, "models/tflite/model_metadata.json")
+    doc_path = os.path.join(PROJECT_ROOT, "deployment/task6/README.md")
     with open(doc_path, encoding="utf-8") as f:
         doc = f.read()
-    meta = json.load(open(meta_path, encoding="utf-8"))
-    # Không còn khuyến nghị chia 255 / Rescaling 1/255 (chỉ còn cảnh báo cấm)
-    assert "Rescaling(1/255)" in doc  # xuất hiện dưới dạng CẢNH BÁO cấm dùng
-    assert doc.count("Rescaling(1/255)") == 1
-    # Phải khẳng định chuẩn [0,255] → preprocess_input [-1,1]
-    assert "preprocess_input" in doc
-    assert "KHÔNG được" in doc
-    assert "[0,255]" in json.dumps(meta)
-    assert "preprocess_input" in json.dumps(meta)
-    # normalization chính của metadata là preprocess_input, không phải Rescaling 1/255
-    assert "preprocess_input" in meta["input"]["normalization"]
-    assert "Rescaling(1/255)" not in meta["input"]["normalization"]
+    assert "[0,255]" in doc
+    assert "Rescaling" in doc
+    assert "chia 255" in doc  # có nhắc việc KHÔNG được chia 255
+    # pipeline_config: V3 giữ preprocessing trong model
+    with open(os.path.join(PROJECT_ROOT, "pipeline_config.json"), encoding="utf-8") as f:
+        pcfg = json.load(f)
+    assert pcfg["model"]["include_preprocessing"] is True
+    assert pcfg["model"]["base"] == "mobilenetv3small"
+    # Không có Rescaling(1/255) ĐƯỢC ÁP DỤNG trong model (chỉ nhắc trong docstring)
+    import inspect
+    from src import model as model_mod
+    src = inspect.getsource(model_mod)
+    assert "layers.Rescaling(" not in src, "model.py không được tự thêm lớp Rescaling"
+    assert "mobilenet_v2.preprocess_input" in src or "include_preprocessing" in src
 
 
 def test_evaluate_load_model_checks_existence_first():

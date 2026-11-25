@@ -1,0 +1,42 @@
+# Dataset config: legacy_ripeness_v1 (dataset cũ — GIỮ NGUYÊN tại dataset/)
+dataset_id: legacy_ripeness_v1
+dataset_version: 1
+task_type: image_classification
+
+# Thứ tự danh sách này = label index (0-based). KHÔNG đổi nhãn/thứ tự cũ.
+classes:
+  - unripe
+  - medium_ripe
+  - ripe
+
+paths:
+  # dataset cũ vẫn nằm tại dataset/ (giữ nguyên theo xác nhận)
+  raw: dataset/raw
+  manifests: datasets/legacy_ripeness_v1/manifests
+  derived: dataset/derived
+  exclusions: dataset/review_exclusions.csv
+  capture_log: dataset/capture_log.csv
+  group_splits: dataset/group_splits.csv
+  label_overrides: dataset/label_overrides.csv
+
+input:
+  image_size: 224
+  color_mode: RGB
+
+preprocessing:
+  pipeline: crop_v1
+  version: v1
+
+split:
+  strategy: group_stratified
+  ratios: [0.70, 0.15, 0.15]
+  seed: 42
+
+labels:
+  source: directory
+  allow_pending_review: true
+  aliases:
+    medium_ripe: [medium_ripe, medium-ripe]   # tương thích ngược
+
+validation:
+  require_nonempty: true

@@ -154,19 +154,26 @@ def _compare_keras_tflite(model, tflite_bytes: bytes, dummy: np.ndarray) -> dict
     }
 
 
-def export_tflite(cfg: dict, model_path: str | None = None) -> dict:
+def export_tflite(cfg: dict, model_path: str | None = None,
+                  classes: list | None = None, out_dir: str | None = None) -> dict:
+    """Xuất TFLite Float32/Float16 (không INT8).
+
+    ``classes``: lớp của dataset (framework multi-dataset); None → dùng
+    ``cfg["project"]["classes"]`` (tương thích ngược).
+    ``out_dir``: thư mục đích; None → ``paths["tflite"]``.
+    """
     set_seeds(cfg)
     e = cfg.get("export", {})
     image_size = int(cfg["data"]["image_size"])
     paths = cfg["paths"]
-    classes = cfg["project"]["classes"]
+    classes = list(classes) if classes is not None else list(cfg["project"]["classes"])
     max_samples = int(e.get("representative_samples", 500))
 
     model_path = _resolve_model_path(cfg, model_path)
     model = _load_model(model_path)
 
     saved_dir = _save_model(model, os.path.join(paths["saved_model"], "best_model"))
-    os.makedirs(paths["tflite"], exist_ok=True)
+    os.makedirs(out_dir or paths["tflite"], exist_ok=True)
 
     # Dummy input cho validate/compare: float32 [0,255] khớp input model
     # (model tự preprocess_input [0,255] -> [-1,1]). Tensor ngẫu nhiên của test.
@@ -174,11 +181,11 @@ def export_tflite(cfg: dict, model_path: str | None = None) -> dict:
     dummy = rng.uniform(0, 255, size=(1, image_size, image_size, 3)).astype(np.float32)
 
     # Labels + metadata cho Android/MediaPipe
-    labels_path = os.path.join(paths["tflite"], "labels.txt")
+    labels_path = os.path.join(out_dir or paths["tflite"], "labels.txt")
     with open(labels_path, "w", encoding="utf-8") as f:
         for cls in classes:
             f.write(f"{cls}\n")
-    metadata_path = os.path.join(paths["tflite"], "model_metadata.json")
+    metadata_path = os.path.join(out_dir or paths["tflite"], "model_metadata.json")
     metadata = {
         "model": "chili_ripeness_mobilenetv2",
         "input": {"shape": [1, image_size, image_size, 3], "type": "RGB",
@@ -201,7 +208,7 @@ def export_tflite(cfg: dict, model_path: str | None = None) -> dict:
 
     # 1) Float32
     float32_bytes = _convert(saved_dir, "float32")
-    float32_path = os.path.join(paths["tflite"], e.get("tflite_filename", "chili_ripeness.tflite"))
+    float32_path = os.path.join(out_dir or paths["tflite"], e.get("tflite_filename", "chili_ripeness.tflite"))
     with open(float32_path, "wb") as f:
         f.write(float32_bytes)
     results["models"]["float32"] = {
@@ -213,7 +220,7 @@ def export_tflite(cfg: dict, model_path: str | None = None) -> dict:
     # 2) Float16
     try:
         float16_bytes = _convert(saved_dir, "float16")
-        float16_path = os.path.join(paths["tflite"], e.get("float16_filename", "chili_ripeness_float16.tflite"))
+        float16_path = os.path.join(out_dir or paths["tflite"], e.get("float16_filename", "chili_ripeness_float16.tflite"))
         with open(float16_path, "wb") as f:
             f.write(float16_bytes)
         # Với float16 cần so sánh riêng; dummy float32 có thể sai dtype nên validate không truyền dummy
@@ -233,7 +240,7 @@ def export_tflite(cfg: dict, model_path: str | None = None) -> dict:
     else:
         try:
             int8_bytes = _convert(saved_dir, "int8", rep_ds)
-            int8_path = os.path.join(paths["tflite"], e.get("int8_filename", "chili_ripeness_int8.tflite"))
+            int8_path = os.path.join(out_dir or paths["tflite"], e.get("int8_filename", "chili_ripeness_int8.tflite"))
             with open(int8_path, "wb") as f:
                 f.write(int8_bytes)
             results["models"]["int8"] = {
@@ -244,7 +251,7 @@ def export_tflite(cfg: dict, model_path: str | None = None) -> dict:
             results["models"]["int8_error"] = str(exc)
 
     # Lưu báo cáo tổng
-    report_path = os.path.join(paths["tflite"], "export_report.json")
+    report_path = os.path.join(out_dir or paths["tflite"], "export_report.json")
     with open(report_path, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2, ensure_ascii=False)
     results["report"] = report_path
