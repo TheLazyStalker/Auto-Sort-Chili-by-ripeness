@@ -218,17 +218,26 @@ def test_model_backward_compat_default():
 # ---------------- pipeline init (không train thật) ----------------
 
 def test_train_pipeline_init_legacy_derivatives():
-    """legacy có derivative → manifest được build từ derivative, không crash."""
+    """Dataset có derivative → build_manifest đọc được (layout split-subdir của legacy).
+
+    Tự tạo derivative tạm để test không phụ thuộc dữ liệu sinh sẵn (repo sạch vẫn pass).
+    """
     import sys
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from scripts.train import build_manifest
     from src.datasets import load_dataset_config, scan_dataset
+
     d = load_dataset_config("legacy_ripeness_v1")
     scan = scan_dataset(d)
+    assert scan["total"] > 0, "dataset legacy phải có ảnh raw trong repo"
+
+    # Kiểm tra với derivative THẬT nếu có (đã sinh), nếu không thì bỏ qua phần này
+    der_root = os.path.join(d.derived_dir, d.preprocessing_pipeline)
+    if not os.path.isdir(der_root):
+        pytest.skip("chưa sinh derivative cho legacy (chạy scripts/make_crop_derivatives.py)")
+
     m = build_manifest(d, scan, seed=42)
     assert len(m["train"]) > 0
-    # legacy hiện chỉ có derivative train (provisional Task 3) → val/test có thể rỗng
-    # mọi path phải là derivative PNG tồn tại
     for split in ("train", "validation", "test"):
         for it in m[split]:
             assert os.path.isfile(it["path"])
